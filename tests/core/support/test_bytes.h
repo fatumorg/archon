@@ -14,5 +14,6 @@ std::vector<std::byte> fromHex(std::string_view hex);
 std::string toHex(std::span<const std::byte> data);
 std::string toText(std::span<const std::byte> data);
 std::vector<std::byte> deflateRaw(std::span<const std::byte> data);
+std::vector<std::byte> aesEcbEncrypt(std::span<const std::byte> data, std::span<const std::byte, 32> key);
 
 }

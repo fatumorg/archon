@@ -1,5 +1,6 @@
 #include "support/test_bytes.h"
 
+#include <openssl/evp.h>
 #include <zlib.h>
 
 #include <stdexcept>
@@ -56,6 +57,18 @@ std::vector<std::byte> deflateRaw(std::span<const std::byte> data)
     deflateEnd(&stream);
     if (status != Z_STREAM_END)
         throw std::runtime_error("deflate failed");
+    return result;
+}
+
+std::vector<std::byte> aesEcbEncrypt(std::span<const std::byte> data, std::span<const std::byte, 32> key)
+{
+    std::vector<std::byte> result(data.begin(), data.end());
+    EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(context, EVP_aes_256_ecb(), nullptr, reinterpret_cast<const unsigned char *>(key.data()), nullptr);
+    EVP_CIPHER_CTX_set_padding(context, 0);
+    int written = 0;
+    EVP_EncryptUpdate(context, reinterpret_cast<unsigned char *>(result.data()), &written, reinterpret_cast<const unsigned char *>(data.data()), static_cast<int>(data.size() - data.size() % 16));
+    EVP_CIPHER_CTX_free(context);
     return result;
 }
 
