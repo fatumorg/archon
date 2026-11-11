@@ -6,6 +6,11 @@
 
 namespace archon::test {
 
+std::filesystem::path scratchDirectory()
+{
+    return std::filesystem::path(ARCHON_TEST_CACHE_DIR) / "scratch";
+}
+
 const Keys *realKeys()
 {
     static std::unique_ptr<Keys> keys;

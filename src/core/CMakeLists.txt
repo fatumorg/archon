@@ -14,6 +14,8 @@ add_library(archon-core STATIC
     rpf/rpf_archive.cpp
     rpf/rpf_extract.cpp
     rpf/rpf_reader.cpp
+    rpf/rpf_toc.cpp
+    rpf/rpf_writer.cpp
     rsc/rsc7.cpp
     safety/transaction.cpp
     search/entry_search.cpp

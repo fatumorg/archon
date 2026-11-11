@@ -67,4 +67,20 @@ Result<std::vector<std::byte>> inflateRawUpTo(std::span<const std::byte> data, s
     return std::move(inflated->bytes);
 }
 
+std::vector<std::byte> compressRaw(std::span<const std::byte> data)
+{
+    z_stream stream {};
+    if (data.size() > maxAllocation || deflateInit2(&stream, Z_BEST_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+        return {};
+    std::vector<std::byte> result(deflateBound(&stream, static_cast<uLong>(data.size())));
+    stream.next_in = reinterpret_cast<Bytef *>(const_cast<std::byte *>(data.data()));
+    stream.avail_in = static_cast<uInt>(data.size());
+    stream.next_out = reinterpret_cast<Bytef *>(result.data());
+    stream.avail_out = static_cast<uInt>(result.size());
+    const int status = deflate(&stream, Z_FINISH);
+    result.resize(status == Z_STREAM_END ? stream.total_out : 0);
+    deflateEnd(&stream);
+    return result;
+}
+
 }

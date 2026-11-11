@@ -410,6 +410,29 @@ struct Transaction::State {
         return found == touched.end() ? nullptr : &*found;
     }
 
+    Result<Touched *> touch(const std::filesystem::path &path)
+    {
+        if (isWhole(path))
+            return failure(path.string() + " was already replaced in this transaction");
+        if (Touched *known = findTouched(path))
+            return known;
+        if (!isRegularFile(path))
+            return failure(path.string() + " is not a file");
+        auto handle = WritableFile::open(path, false);
+        if (!handle)
+            return std::unexpected(handle.error());
+        const std::uint64_t length = handle->size();
+        std::vector<std::byte> payload;
+        putString(payload, path.string());
+        putInteger(payload, 1, 1);
+        putInteger(payload, length, 8);
+        putInteger(payload, static_cast<std::uint64_t>(modifiedOf(path)), 8);
+        if (const auto recorded = append(Kind::Touch, payload); !recorded)
+            return std::unexpected(recorded.error());
+        touched.push_back({ path, std::move(*handle), length });
+        return &touched.back();
+    }
+
     Result<void> backUp(const std::filesystem::path &file)
     {
         const std::string name = backupPrefix + std::to_string(backups++);
@@ -481,26 +504,10 @@ Result<void> Transaction::writeAt(const std::filesystem::path &file, std::uint64
     const auto path = state_->checked(file);
     if (!path)
         return std::unexpected(path.error());
-    if (state_->isWhole(*path))
-        return failure(path->string() + " was already replaced in this transaction");
-    State::Touched *touched = state_->findTouched(*path);
-    if (touched == nullptr) {
-        if (!isRegularFile(*path))
-            return failure(path->string() + " is not a file");
-        auto handle = WritableFile::open(*path, false);
-        if (!handle)
-            return std::unexpected(handle.error());
-        const std::uint64_t length = handle->size();
-        std::vector<std::byte> payload;
-        putString(payload, path->string());
-        putInteger(payload, 1, 1);
-        putInteger(payload, length, 8);
-        putInteger(payload, static_cast<std::uint64_t>(modifiedOf(*path)), 8);
-        if (const auto recorded = state_->append(Kind::Touch, payload); !recorded)
-            return recorded;
-        state_->touched.push_back({ *path, std::move(*handle), length });
-        touched = &state_->touched.back();
-    }
+    const auto found = state_->touch(*path);
+    if (!found)
+        return std::unexpected(found.error());
+    State::Touched *touched = *found;
     const auto index = static_cast<std::uint32_t>(touched - state_->touched.data());
     if (offset < touched->originalLength) {
         const std::uint64_t covered = std::min<std::uint64_t>(data.size(), touched->originalLength - offset);
@@ -520,6 +527,17 @@ Result<void> Transaction::writeAt(const std::filesystem::path &file, std::uint64
         }
     }
     return touched->handle.write(offset, data);
+}
+
+Result<std::vector<std::byte>> Transaction::readAt(const std::filesystem::path &file, std::uint64_t offset, std::size_t count)
+{
+    const auto path = state_->checked(file);
+    if (!path)
+        return std::unexpected(path.error());
+    const auto touched = state_->touch(*path);
+    if (!touched)
+        return std::unexpected(touched.error());
+    return (*touched)->handle.read(offset, count);
 }
 
 Result<std::uint64_t> Transaction::sizeOf(const std::filesystem::path &file)

@@ -20,6 +20,7 @@ public:
     ~Transaction();
 
     Result<void> writeAt(const std::filesystem::path &file, std::uint64_t offset, std::span<const std::byte> data);
+    Result<std::vector<std::byte>> readAt(const std::filesystem::path &file, std::uint64_t offset, std::size_t count);
     Result<std::uint64_t> sizeOf(const std::filesystem::path &file);
     Result<void> replaceFile(const std::filesystem::path &file, const std::function<Result<void>(const std::filesystem::path &temporary)> &produce);
     Result<void> removeFile(const std::filesystem::path &file);

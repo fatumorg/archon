@@ -43,7 +43,7 @@ public:
         : file_(file)
         , name_(file.string())
     {
-        if (file_.open(QIODevice::ReadOnly))
+        if (file_.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
             size_ = static_cast<std::uint64_t>(file_.size());
     }
 

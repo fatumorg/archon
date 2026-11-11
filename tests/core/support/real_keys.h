@@ -5,5 +5,6 @@
 namespace archon::test {
 
 const Keys *realKeys();
+std::filesystem::path scratchDirectory();
 
 }
