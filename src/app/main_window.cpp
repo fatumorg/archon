@@ -280,6 +280,7 @@ void MainWindow::buildNavigationRow()
     filter_->setObjectName(QStringLiteral("filterBox"));
     filter_->setPlaceholderText(tr("Search"));
     filter_->setClearButtonEnabled(true);
+    filter_->addAction(loadIcon(QStringLiteral("search")), QLineEdit::TrailingPosition);
     filter_->setFixedWidth(250);
     filter_->setFixedHeight(30);
     connect(filter_, &QLineEdit::textChanged, this, &MainWindow::fillList);
@@ -351,8 +352,8 @@ void MainWindow::buildViews()
     list_->header()->setSectionsMovable(false);
     list_->header()->resizeSection(0, 220);
     list_->header()->resizeSection(1, 135);
-    list_->header()->resizeSection(2, 80);
-    list_->header()->resizeSection(3, 145);
+    list_->header()->resizeSection(2, 90);
+    list_->header()->resizeSection(3, 170);
     list_->header()->resizeSection(4, 110);
     list_->setSortingEnabled(true);
     list_->sortByColumn(0, Qt::AscendingOrder);

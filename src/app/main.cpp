@@ -1,3 +1,4 @@
+#include "app/game_setup.h"
 #include "app/main_window.h"
 #include "app/style.h"
 #include "core/version.h"
@@ -11,8 +12,10 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(archon::versionString());
     QApplication::setDesktopFileName(QStringLiteral("archon"));
     archon::applyStyle(application);
-    const QStringList arguments = QApplication::arguments();
-    archon::MainWindow window(std::filesystem::path(arguments.value(1).toStdString()), nullptr);
+    const auto session = archon::openSession(nullptr);
+    if (!session)
+        return 1;
+    archon::MainWindow window(session->install.root, session->keys);
     window.show();
     return QApplication::exec();
 }

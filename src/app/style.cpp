@@ -11,6 +11,7 @@ namespace archon {
 namespace {
 
 const char *const styleSheet = R"(
+* { font-size: 9pt; }
 QMainWindow, QDialog { background: #ffffff; }
 QMenuBar { background: #ffffff; border: none; }
 QMenuBar::item { padding: 3px 7px; background: transparent; }
@@ -25,7 +26,7 @@ QToolBar QToolButton { border: 1px solid transparent; padding: 2px; }
 QToolBar QToolButton:hover { background: #e5f3ff; border-color: #cce8ff; }
 QToolBar QToolButton:pressed { background: #cce8ff; border-color: #99d1ff; }
 QTreeView { background: #ffffff; border: 1px solid #d9d9d9; outline: none; }
-QTreeView::item { padding: 1px 0; border: 1px solid transparent; }
+QTreeView::item { padding: 0; border: 1px solid transparent; }
 QTreeView::item:hover { background: #e5f3ff; }
 QTreeView::item:selected { background: #cce8ff; border-color: #99d1ff; color: #000000; }
 QHeaderView::section { background: #ffffff; border: none; border-right: 1px solid #e5e5e5; padding: 4px 6px; }

@@ -21,6 +21,7 @@ endfunction()
 
 archon_add_app_test(tst_main_window app/tst_main_window.cpp)
 archon_add_app_test(tst_display_format app/tst_display_format.cpp)
+archon_add_app_test(tst_game_setup app/tst_game_setup.cpp)
 
 archon_add_test(tst_byte_reader core/tst_byte_reader.cpp)
 archon_add_test(tst_crypto_primitives core/tst_crypto_primitives.cpp)
@@ -36,7 +37,7 @@ archon_add_test(tst_game_browser core/tst_game_browser.cpp)
 archon_add_test(tst_entry_search core/tst_entry_search.cpp)
 archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
 
-set_tests_properties(tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract PROPERTIES LABELS real)
+set_tests_properties(tst_game_setup tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract PROPERTIES LABELS real)
 set_tests_properties(tst_real_sweep PROPERTIES LABELS sweep TIMEOUT 14400 ENVIRONMENT QTEST_FUNCTION_TIMEOUT=14400000)
 
 if(ARCHON_FUZZ)

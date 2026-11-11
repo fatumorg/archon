@@ -6,7 +6,9 @@ ARCHON ships no game files and no encryption keys. Keys are derived from your ow
 
 ## Status
 
-Early development. The interface is an empty window while archive reading is built in the core library.
+Early development. ARCHON opens a GTA V install read-only: it browses folders, archives and nested archives, filters and searches entry names, and extracts files. Editing archives and installing packages are not built yet.
+
+On first start ARCHON downloads the public key table file `magic.dat` from the CodeWalker repository, checks it against a pinned SHA-256, and uses it with the key found in your own game executable.
 
 ## Build
 
