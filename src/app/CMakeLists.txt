@@ -1,6 +1,9 @@
 add_library(archon-app STATIC
+    address_bar.cpp
+    busy.cpp
     display_format.cpp
     main_window.cpp
+    search_dialog.cpp
     style.cpp
 )
 target_link_libraries(archon-app PUBLIC archon-core Qt6::Widgets Qt6::Svg Qt6::Network)
