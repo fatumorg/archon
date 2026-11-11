@@ -1,4 +1,7 @@
 add_library(archon-core STATIC
+    crypto/aes.cpp
+    crypto/hash.cpp
+    crypto/inflate.cpp
     io/byte_reader.cpp
     version.cpp
 )

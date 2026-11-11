@@ -1,6 +1,12 @@
+add_library(archon-test-support STATIC
+    core/support/test_bytes.cpp
+)
+target_include_directories(archon-test-support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core)
+target_link_libraries(archon-test-support PUBLIC archon-core Qt6::Test PRIVATE ZLIB::ZLIB)
+
 function(archon_add_test name)
     add_executable(${name} ${ARGN})
-    target_link_libraries(${name} PRIVATE archon-core Qt6::Test)
+    target_link_libraries(${name} PRIVATE archon-test-support)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
@@ -11,3 +17,4 @@ archon_add_test(tst_main_window
 target_link_libraries(tst_main_window PRIVATE Qt6::Widgets)
 
 archon_add_test(tst_byte_reader core/tst_byte_reader.cpp)
+archon_add_test(tst_crypto_primitives core/tst_crypto_primitives.cpp)
