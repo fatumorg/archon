@@ -6,7 +6,9 @@ add_library(archon-core STATIC
     crypto/key_digests.cpp
     crypto/keys.cpp
     crypto/ng.cpp
+    game/game_install.cpp
     io/byte_reader.cpp
+    io/path_resolver.cpp
     rpf/rpf_archive.cpp
     rpf/rpf_reader.cpp
     rsc/rsc7.cpp
