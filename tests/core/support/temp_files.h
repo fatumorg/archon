@@ -4,8 +4,10 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace archon::test {
 
@@ -18,6 +20,14 @@ inline void writeFile(const std::filesystem::path &file, std::span<const std::by
 {
     std::filesystem::create_directories(file.parent_path());
     std::ofstream(file, std::ios::binary).write(reinterpret_cast<const char *>(content.data()), static_cast<std::streamsize>(content.size()));
+}
+
+inline std::vector<std::byte> readFile(const std::filesystem::path &file)
+{
+    std::ifstream stream(file, std::ios::binary);
+    const std::vector<char> content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    const auto bytes = std::as_bytes(std::span(content));
+    return std::vector<std::byte>(bytes.begin(), bytes.end());
 }
 
 inline void writeFile(const std::filesystem::path &file, std::string_view content = {})

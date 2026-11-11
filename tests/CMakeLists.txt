@@ -35,6 +35,7 @@ archon_add_test(tst_game_install core/tst_game_install.cpp)
 archon_add_test(tst_rpf_extract core/tst_rpf_extract.cpp)
 archon_add_test(tst_game_browser core/tst_game_browser.cpp)
 archon_add_test(tst_entry_search core/tst_entry_search.cpp)
+archon_add_test(tst_transaction core/tst_transaction.cpp)
 archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
 
 set_tests_properties(tst_game_setup tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract PROPERTIES LABELS real)

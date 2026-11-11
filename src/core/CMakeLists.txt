@@ -10,10 +10,12 @@ add_library(archon-core STATIC
     game/game_install.cpp
     io/byte_reader.cpp
     io/path_resolver.cpp
+    io/writable_file.cpp
     rpf/rpf_archive.cpp
     rpf/rpf_extract.cpp
     rpf/rpf_reader.cpp
     rsc/rsc7.cpp
+    safety/transaction.cpp
     search/entry_search.cpp
     version.cpp
 )
