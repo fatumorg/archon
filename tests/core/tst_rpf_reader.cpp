@@ -11,6 +11,7 @@
 #include <QTest>
 
 #include <fstream>
+#include <random>
 
 using namespace archon;
 using namespace archon::test;
@@ -60,6 +61,8 @@ private slots:
     void rejectsDeepNesting();
     void rejectsLyingUncompressedSize();
     void rejectsLyingResource();
+    void readsResourceStoredWithLineEndingDamage();
+    void readsResourceWithEightBytesBeforeTheStream();
     void rejectsTruncatedData();
     void encryptedEntryWithoutKeysFails();
     void readsRealBinaryEntry();
@@ -208,6 +211,61 @@ void TestRpfReader::rejectsLyingResource()
     const auto huge = dataAt(*reader, "x.ytd");
     QVERIFY(!huge);
     QCOMPARE(huge.error().message, std::string("declared size exceeds the allocation limit"));
+}
+
+void TestRpfReader::readsResourceStoredWithLineEndingDamage()
+{
+    const std::byte carriageReturn { 0x0d };
+    const std::byte lineFeed { 0x0a };
+    std::vector<std::byte> noisy(0x400);
+    std::vector<std::byte> body;
+    std::size_t lineFeeds = 0;
+    for (unsigned seed = 1; lineFeeds < 2 || std::ranges::contains(body, carriageReturn); ++seed) {
+        std::mt19937 generator(seed);
+        for (std::byte &value : noisy)
+            value = static_cast<std::byte>(generator() & 0x0F);
+        body = deflateRaw(noisy);
+        lineFeeds = static_cast<std::size_t>(std::ranges::count(body, lineFeed));
+    }
+    std::vector<std::byte> damaged;
+    for (const std::byte value : body) {
+        if (value == lineFeed)
+            damaged.push_back(carriageReturn);
+        damaged.push_back(value);
+    }
+    QCOMPARE(damaged.size(), body.size() + lineFeeds);
+
+    RpfBuilder builder;
+    builder.addResourceBody("damaged.ytd", damaged, 0x08000000, 0x08000000);
+    builder.addResourceBody("truncated.ytd", { damaged.begin(), damaged.begin() + static_cast<std::ptrdiff_t>(damaged.size() / 2) }, 0x08000000, 0x08000000);
+    const auto reader = openBytes(builder.build());
+    QVERIFY(reader);
+    const auto data = dataAt(*reader, "damaged.ytd");
+    QVERIFY2(data, data ? "" : data.error().message.c_str());
+    QCOMPARE(*data, noisy);
+    const auto stored = reader->storedFile(*reader->archive().find("damaged.ytd"));
+    QVERIFY(stored);
+    QCOMPARE(std::vector<std::byte>(stored->begin() + 16, stored->end()), damaged);
+    QVERIFY(!dataAt(*reader, "truncated.ytd"));
+}
+
+void TestRpfReader::readsResourceWithEightBytesBeforeTheStream()
+{
+    std::vector<std::byte> prefixed = fromHex("6d71c57333a3b2d1");
+    const auto stream = deflateRaw(pages);
+    prefixed.insert(prefixed.end(), stream.begin(), stream.end());
+    RpfBuilder builder;
+    builder.addResourceBody("old.ytd", prefixed, 0x08000000, 0x08000000);
+    builder.addResourceBody("short.ytd", { prefixed.begin(), prefixed.begin() + 12 }, 0x08000000, 0x08000000);
+    const auto reader = openBytes(builder.build());
+    QVERIFY(reader);
+    const auto data = dataAt(*reader, "old.ytd");
+    QVERIFY2(data, data ? "" : data.error().message.c_str());
+    QCOMPARE(*data, pages);
+    const auto stored = reader->storedFile(*reader->archive().find("old.ytd"));
+    QVERIFY(stored);
+    QCOMPARE(std::vector<std::byte>(stored->begin() + 16, stored->end()), prefixed);
+    QVERIFY(!dataAt(*reader, "short.ytd"));
 }
 
 void TestRpfReader::rejectsTruncatedData()

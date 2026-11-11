@@ -29,3 +29,11 @@ archon_add_test(tst_rpf_reader core/tst_rpf_reader.cpp)
 archon_add_test(tst_path_resolver core/tst_path_resolver.cpp)
 archon_add_test(tst_game_install core/tst_game_install.cpp)
 archon_add_test(tst_rpf_extract core/tst_rpf_extract.cpp)
+archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
+
+set_tests_properties(tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract PROPERTIES LABELS real)
+set_tests_properties(tst_real_sweep PROPERTIES LABELS sweep TIMEOUT 14400 ENVIRONMENT QTEST_FUNCTION_TIMEOUT=14400000)
+
+if(ARCHON_FUZZ)
+    add_subdirectory(fuzz)
+endif()

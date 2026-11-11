@@ -38,6 +38,7 @@
           pkgs.xvfb-run
           pkgs.xdotool
           pkgs.imagemagick
+          pkgs.clang
           pkgs.clang-tools
           pkgs.gdb
         ];

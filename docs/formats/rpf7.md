@@ -89,6 +89,10 @@ A binary file with the encrypted flag set is decrypted with the archive's cipher
 
 A resource file occupies its stored size at its offset. The first 16 bytes are a header and the rest is a raw deflate stream that inflates to the system pages followed by the graphics pages. A stored size of `0xFFFFFF` means the resource is 16 MiB or larger; its real size is then read from the header area as `(b[2] << 24) | (b[5] << 16) | (b[14] << 8) | b[7]`. Only resources whose names end in `.ysc` have an encrypted body.
 
+A small number of resources in the shipped game were stored after a text-mode conversion that put a `0x0D` byte in front of every `0x0A` byte of the deflate stream; their stored size includes the extra bytes. Such a stream does not inflate. When inflating fails, ARCHON removes every `0x0D` that is directly followed by `0x0A` and tries once more; the result is accepted only if it inflates to exactly the size the flags declare.
+
+A few resources of older versions (found in the AES-encrypted destruction archives inside `x64f.rpf`) carry eight extra bytes between the RSC7 header and the deflate stream. When inflating still fails, ARCHON skips those eight bytes and tries once more, with the same exact-size condition.
+
 When a resource is exported as a standalone file, ARCHON writes a fresh RSC7 header built from the entry's flags, followed by the deflate stream.
 
 ## RSC7 header
@@ -117,3 +121,11 @@ count = ((flags >> 27) & 1)
       + (((flags >> 4) & 1) << 8)
 size  = base * count
 ```
+
+## Verified against
+
+Every entry of every archive, nested archives included, was read and inflated without a failure on:
+
+| Edition | `version.txt` | Archives | Entries | Bytes read |
+| --- | --- | --- | --- | --- |
+| Legacy (Steam) | 1.0.231.0 | 5378 (179 top level) | 403,642 | 278,208,038,312 |

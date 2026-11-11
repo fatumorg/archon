@@ -9,6 +9,12 @@ set(CMAKE_AUTOMOC ON)
 
 add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 
+option(ARCHON_FUZZ "Build the libFuzzer targets with sanitizers" OFF)
+if(ARCHON_FUZZ)
+    add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Test)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)

@@ -13,6 +13,7 @@ public:
     void addDirectory(const std::string &path);
     void addBinary(const std::string &path, std::vector<std::byte> bytes, bool compress);
     void addResource(const std::string &path, const std::vector<std::byte> &pageData, std::uint32_t systemFlags, std::uint32_t graphicsFlags);
+    void addResourceBody(const std::string &path, const std::vector<std::byte> &storedBody, std::uint32_t systemFlags, std::uint32_t graphicsFlags);
     std::vector<std::byte> build(RpfEncryption encryption = RpfEncryption::None) const;
 
 private:

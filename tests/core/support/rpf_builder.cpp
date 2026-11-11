@@ -49,6 +49,11 @@ void RpfBuilder::addBinary(const std::string &path, std::vector<std::byte> bytes
 
 void RpfBuilder::addResource(const std::string &path, const std::vector<std::byte> &pageData, std::uint32_t systemFlags, std::uint32_t graphicsFlags)
 {
+    addResourceBody(path, deflateRaw(pageData), systemFlags, graphicsFlags);
+}
+
+void RpfBuilder::addResourceBody(const std::string &path, const std::vector<std::byte> &body, std::uint32_t systemFlags, std::uint32_t graphicsFlags)
+{
     Node &target = node(path);
     target.kind = RpfEntryKind::Resource;
     target.systemFlags = systemFlags;
@@ -57,7 +62,6 @@ void RpfBuilder::addResource(const std::string &path, const std::vector<std::byt
     put(target.stored, ((graphicsFlags >> 28) & 0xF) | (((systemFlags >> 28) & 0xF) << 4), 4);
     put(target.stored, systemFlags, 4);
     put(target.stored, graphicsFlags, 4);
-    const auto body = deflateRaw(pageData);
     target.stored.insert(target.stored.end(), body.begin(), body.end());
     target.storedSize = static_cast<std::uint32_t>(target.stored.size());
 }

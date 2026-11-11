@@ -18,6 +18,7 @@ private slots:
     void inflateRoundTrip();
     void inflateRejectsBomb();
     void inflateRejectsGarbage();
+    void inflateRejectsUnreachableSize();
 };
 
 void TestCryptoPrimitives::jenkinsKnownValues()
@@ -76,6 +77,17 @@ void TestCryptoPrimitives::inflateRejectsGarbage()
 {
     QVERIFY(!inflateRaw(fromHex("ffffffffffffffff"), 16));
     QVERIFY(!inflateRaw({}, 16));
+}
+
+void TestCryptoPrimitives::inflateRejectsUnreachableSize()
+{
+    const auto packed = deflateRaw(std::vector<std::byte>(10000, std::byte { 'x' }));
+    const auto unreachable = inflateRaw(packed, 100'000'000);
+    QVERIFY(!unreachable);
+    QCOMPARE(unreachable.error().message, std::string("declared size cannot be reached by this data"));
+    const auto empty = inflateRaw({}, maxAllocation);
+    QVERIFY(!empty);
+    QCOMPARE(empty.error().message, std::string("declared size cannot be reached by this data"));
 }
 
 QTEST_APPLESS_MAIN(TestCryptoPrimitives)

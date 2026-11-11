@@ -23,6 +23,20 @@ std::unexpected<Error> failure(std::uint64_t offset, std::string message)
     return std::unexpected(Error { format, offset, std::move(message) });
 }
 
+constexpr std::size_t oldStreamPrefixSize = 8;
+
+std::vector<std::byte> withoutInsertedCarriageReturns(std::span<const std::byte> data)
+{
+    std::vector<std::byte> result;
+    result.reserve(data.size());
+    for (std::size_t i = 0; i < data.size(); ++i) {
+        if (data[i] == std::byte { 0x0d } && i + 1 < data.size() && data[i + 1] == std::byte { 0x0a })
+            continue;
+        result.push_back(data[i]);
+    }
+    return result;
+}
+
 class FileSource : public RandomAccessSource {
 public:
     explicit FileSource(const std::filesystem::path &file)
@@ -201,7 +215,19 @@ Result<std::vector<std::byte>> RpfReader::fileData(std::uint32_t entryIndex) con
     const std::uint64_t pages = rsc7SizeFromFlags((*entry)->systemFlags) + rsc7SizeFromFlags((*entry)->graphicsFlags);
     if (pages > maxAllocation)
         return failure((*entry)->offset, "declared size exceeds the allocation limit");
-    return inflateRaw(*body, static_cast<std::size_t>(pages));
+    auto data = inflateRaw(*body, static_cast<std::size_t>(pages));
+    if (data)
+        return data;
+    const auto repaired = withoutInsertedCarriageReturns(*body);
+    if (repaired.size() != body->size()) {
+        if (auto recovered = inflateRaw(repaired, static_cast<std::size_t>(pages)))
+            return recovered;
+    }
+    if (body->size() > oldStreamPrefixSize) {
+        if (auto recovered = inflateRaw(std::span(*body).subspan(oldStreamPrefixSize), static_cast<std::size_t>(pages)))
+            return recovered;
+    }
+    return data;
 }
 
 Result<std::vector<std::byte>> RpfReader::storedFile(std::uint32_t entryIndex) const

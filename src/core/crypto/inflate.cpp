@@ -6,6 +6,8 @@ namespace archon {
 
 namespace {
 
+constexpr std::size_t maxDeflateRatio = 1032;
+
 struct Inflated {
     std::vector<std::byte> bytes;
     std::uint64_t consumed;
@@ -45,6 +47,8 @@ Result<Inflated> inflateWithin(std::span<const std::byte> data, std::size_t limi
 
 Result<std::vector<std::byte>> inflateRaw(std::span<const std::byte> data, std::size_t exactSize)
 {
+    if (exactSize <= maxAllocation && exactSize > (data.size() + 1) * maxDeflateRatio)
+        return failure(0, "declared size cannot be reached by this data");
     auto inflated = inflateWithin(data, exactSize);
     if (!inflated)
         return std::unexpected(inflated.error());
