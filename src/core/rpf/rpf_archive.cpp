@@ -16,6 +16,7 @@ constexpr std::uint32_t aesTag = 0x0FFFFFF9;
 constexpr std::uint32_t directoryMarker = 0x7FFFFF00;
 constexpr std::uint32_t maxEntries = 1'000'000;
 constexpr std::uint32_t maxNamesLength = 16u << 20;
+constexpr std::uint32_t maxDirectoryDepth = 64;
 constexpr std::size_t headerSize = 16;
 constexpr std::size_t entrySize = 16;
 constexpr std::uint64_t blockSize = 512;
@@ -110,6 +111,7 @@ Result<void> linkTree(std::vector<RpfEntry> &entries)
     const std::uint32_t count = static_cast<std::uint32_t>(entries.size());
     std::vector<bool> reached(count, false);
     std::vector<std::uint32_t> pending { 0 };
+    std::vector<std::uint32_t> depth(count, 0);
     reached[0] = true;
     while (!pending.empty()) {
         const std::uint32_t directory = pending.back();
@@ -122,8 +124,12 @@ Result<void> linkTree(std::vector<RpfEntry> &entries)
                 return failure(directory, "entry belongs to more than one directory");
             reached[child] = true;
             entries[child].parent = directory;
-            if (entries[child].kind == RpfEntryKind::Directory)
-                pending.push_back(child);
+            if (entries[child].kind != RpfEntryKind::Directory)
+                continue;
+            depth[child] = depth[directory] + 1;
+            if (depth[child] > maxDirectoryDepth)
+                return failure(child, "directories are nested too deep");
+            pending.push_back(child);
         }
     }
     for (std::uint32_t index = 0; index < count; ++index) {

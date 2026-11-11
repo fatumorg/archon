@@ -20,7 +20,7 @@ Notes on the archive format used by GTA V on PC, written from what ARCHON's read
 | 8 | u32 | names block length in bytes |
 | 12 | u32 | encryption tag |
 
-ARCHON refuses more than 1 000 000 entries and a names block over 16 MiB.
+ARCHON refuses more than 1 000 000 entries, a names block over 16 MiB and directories nested more than 64 levels deep.
 
 ## Encryption tags
 

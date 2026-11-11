@@ -56,6 +56,7 @@ private slots:
     void refusesOverwrite();
     void isSafeEntryNameCases();
     void hostileNamesStayInside();
+    void namesThatAreNotUtf8AreNotWritten();
     void extractsTree();
     void extractTreeRejectsFiles();
     void extractsRealDirectory();
@@ -109,6 +110,24 @@ void TestRpfExtract::isSafeEntryNameCases()
     QVERIFY(!isSafeEntryName(std::string("a\0b", 3)));
     QVERIFY(!isSafeEntryName(" a"));
     QVERIFY(!isSafeEntryName("a "));
+}
+
+void TestRpfExtract::namesThatAreNotUtf8AreNotWritten()
+{
+    QVERIFY(!isSafeEntryName("\xE9" "a"));
+    QVERIFY(isSafeEntryName("\xC3\xA9" "a"));
+    RpfBuilder builder;
+    builder.addBinary("\xE9" "a", toVector("first"), false);
+    builder.addBinary("\xE8" "a", toVector("second"), false);
+    builder.addBinary("good.txt", toVector("third"), false);
+    const auto reader = RpfReader::open(memorySource(builder.build()), "test.rpf", nullptr);
+    QVERIFY(reader);
+    QTemporaryDir directory;
+    const auto out = pathOf(directory);
+    const auto summary = extractTree(*reader, 0, out);
+    QVERIFY(summary);
+    QCOMPARE(summary->failures.size(), std::size_t(2));
+    QCOMPARE(filesUnder(out), (std::set<std::string> { "good.txt" }));
 }
 
 void TestRpfExtract::hostileNamesStayInside()

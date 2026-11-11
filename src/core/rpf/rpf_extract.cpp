@@ -1,5 +1,6 @@
 #include "core/rpf/rpf_extract.h"
 
+#include <QByteArrayView>
 #include <QSaveFile>
 
 namespace archon {
@@ -37,7 +38,8 @@ bool isSafeEntryName(std::string_view name)
         && name != ".."
         && name.front() != ' '
         && name.back() != ' '
-        && name.find_first_of(std::string_view("/\\\0", 3)) == std::string_view::npos;
+        && name.find_first_of(std::string_view("/\\\0", 3)) == std::string_view::npos
+        && QByteArrayView(name.data(), static_cast<qsizetype>(name.size())).isValidUtf8();
 }
 
 Result<std::filesystem::path> extractEntry(const RpfReader &reader, std::uint32_t entryIndex, const std::filesystem::path &outputDirectory)

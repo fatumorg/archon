@@ -75,6 +75,7 @@ private slots:
     void rejectsChildRangeOutsideTable();
     void rejectsSelfReferencingDirectory();
     void rejectsUnreachableEntry();
+    void rejectsDirectoriesNestedTooDeep();
     void rejectsNameOffsetOutsideNames();
     void rejectsEntryPastEndOfArchive();
     void rejectsOversizedCounts();
@@ -184,6 +185,22 @@ void TestRpfArchive::rejectsSelfReferencingDirectory()
     bytes = sampleArchive();
     patch(bytes, entryTable + dataDirectory * entrySize + 8, { 0, 0, 0, 0 });
     QVERIFY(!parseWhole(bytes));
+}
+
+void TestRpfArchive::rejectsDirectoriesNestedTooDeep()
+{
+    const auto chain = [](int depth) {
+        std::string path = "d";
+        for (int level = 1; level < depth; ++level)
+            path += "/d";
+        RpfBuilder builder;
+        builder.addBinary(path + "/a.txt", toVector("hello"), false);
+        return builder.build();
+    };
+    QVERIFY(parseWhole(chain(64)));
+    const auto tooDeep = parseWhole(chain(65));
+    QVERIFY(!tooDeep);
+    QCOMPARE(tooDeep.error().message, std::string("directories are nested too deep"));
 }
 
 void TestRpfArchive::rejectsUnreachableEntry()
