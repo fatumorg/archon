@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 
@@ -15,7 +16,7 @@ if(ARCHON_FUZZ)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Test)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg Network Test)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 

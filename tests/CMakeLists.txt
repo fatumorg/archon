@@ -14,11 +14,13 @@ function(archon_add_test name)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
-archon_add_test(tst_main_window
-    app/tst_main_window.cpp
-    ${CMAKE_SOURCE_DIR}/src/app/main_window.cpp
-)
-target_link_libraries(tst_main_window PRIVATE Qt6::Widgets)
+function(archon_add_app_test name)
+    archon_add_test(${name} ${ARGN} ${CMAKE_SOURCE_DIR}/src/app/icons.qrc)
+    target_link_libraries(${name} PRIVATE archon-app)
+endfunction()
+
+archon_add_app_test(tst_main_window app/tst_main_window.cpp)
+archon_add_app_test(tst_display_format app/tst_display_format.cpp)
 
 archon_add_test(tst_byte_reader core/tst_byte_reader.cpp)
 archon_add_test(tst_crypto_primitives core/tst_crypto_primitives.cpp)

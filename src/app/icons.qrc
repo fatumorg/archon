@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/archon.svg</file>
+        <file>icons/back.svg</file>
+        <file>icons/forward.svg</file>
+        <file>icons/up.svg</file>
+        <file>icons/folder.svg</file>
+        <file>icons/archive.svg</file>
+        <file>icons/file.svg</file>
+        <file>icons/extract.svg</file>
+        <file>icons/search.svg</file>
+        <file>icons/refresh.svg</file>
+    </qresource>
+</RCC>
