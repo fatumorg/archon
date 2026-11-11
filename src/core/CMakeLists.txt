@@ -5,6 +5,7 @@ add_library(archon-core STATIC
     crypto/inflate.cpp
     crypto/key_digests.cpp
     crypto/keys.cpp
+    crypto/ng.cpp
     io/byte_reader.cpp
     version.cpp
 )
