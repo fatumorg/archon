@@ -14,6 +14,7 @@ add_library(archon-core STATIC
     rpf/rpf_extract.cpp
     rpf/rpf_reader.cpp
     rsc/rsc7.cpp
+    search/entry_search.cpp
     version.cpp
 )
 target_include_directories(archon-core PUBLIC ${CMAKE_SOURCE_DIR}/src)
