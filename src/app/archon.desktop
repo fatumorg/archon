@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ARCHON
+GenericName=Archive Browser
+Comment=Browse and edit GTA V archives
+Exec=archon
+Icon=archon
+Terminal=false
+Categories=Utility;Archiving;
+Keywords=GTA;RPF;mod;
+StartupWMClass=archon
