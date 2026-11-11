@@ -82,3 +82,38 @@ Entry 0 is the root directory and has an empty name. A directory's children are 
 ## Nesting
 
 An archive can hold other archives as binary files whose names end in `.rpf`. They are stored uncompressed and are read in place, at the entry's offset inside the parent.
+
+## File data
+
+A binary file with the encrypted flag set is decrypted with the archive's cipher before it is inflated. For NG the key is selected from the entry's lower-case name and its uncompressed size.
+
+A resource file occupies its stored size at its offset. The first 16 bytes are a header and the rest is a raw deflate stream that inflates to the system pages followed by the graphics pages. A stored size of `0xFFFFFF` means the resource is 16 MiB or larger; its real size is then read from the header area as `(b[2] << 24) | (b[5] << 16) | (b[14] << 8) | b[7]`. Only resources whose names end in `.ysc` have an encrypted body.
+
+When a resource is exported as a standalone file, ARCHON writes a fresh RSC7 header built from the entry's flags, followed by the deflate stream.
+
+## RSC7 header
+
+| Offset | Type | Meaning |
+|---|---|---|
+| 0 | u32 | magic `0x37435352` (the bytes `RSC7` on disk) |
+| 4 | u32 | resource version |
+| 8 | u32 | system flags |
+| 12 | u32 | graphics flags |
+
+The version is spread over the top four bits of both flag words: `((graphics >> 28) & 0xF) | (((system >> 28) & 0xF) << 4)`.
+
+The size of the pages described by one flag word:
+
+```
+base  = 0x200 << (flags & 0xF)
+count = ((flags >> 27) & 1)
+      + (((flags >> 26) & 1) << 1)
+      + (((flags >> 25) & 1) << 2)
+      + (((flags >> 24) & 1) << 3)
+      + (((flags >> 17) & 0x7F) << 4)
+      + (((flags >> 11) & 0x3F) << 5)
+      + (((flags >> 7) & 0xF) << 6)
+      + (((flags >> 5) & 0x3) << 7)
+      + (((flags >> 4) & 1) << 8)
+size  = base * count
+```
