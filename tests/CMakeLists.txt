@@ -18,3 +18,4 @@ target_link_libraries(tst_main_window PRIVATE Qt6::Widgets)
 
 archon_add_test(tst_byte_reader core/tst_byte_reader.cpp)
 archon_add_test(tst_crypto_primitives core/tst_crypto_primitives.cpp)
+archon_add_test(tst_keys core/tst_keys.cpp)

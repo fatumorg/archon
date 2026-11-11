@@ -1,7 +1,10 @@
 add_library(archon-core STATIC
     crypto/aes.cpp
+    crypto/dotnet_random.cpp
     crypto/hash.cpp
     crypto/inflate.cpp
+    crypto/key_digests.cpp
+    crypto/keys.cpp
     io/byte_reader.cpp
     version.cpp
 )
