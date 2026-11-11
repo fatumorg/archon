@@ -10,6 +10,7 @@ add_library(archon-core STATIC
     io/byte_reader.cpp
     io/path_resolver.cpp
     rpf/rpf_archive.cpp
+    rpf/rpf_extract.cpp
     rpf/rpf_reader.cpp
     rsc/rsc7.cpp
     version.cpp
