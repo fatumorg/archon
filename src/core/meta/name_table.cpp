@@ -1,7 +1,10 @@
 #include "core/meta/name_table.h"
 
 #include "core/crypto/hash.h"
+#include "core/game/game_install.h"
 #include "core/io/ascii.h"
+#include "core/meta/text_file.h"
+#include "core/rpf/rpf_reader.h"
 
 #include <charconv>
 #include <format>
@@ -21,6 +24,30 @@ bool isIdentifierStart(char character)
 bool isIdentifierPart(char character)
 {
     return isIdentifierStart(character) || (character >= '0' && character <= '9');
+}
+
+bool harvestArchive(NameTable &names, const RpfReader &reader, const std::atomic<bool> &cancel)
+{
+    const auto &entries = reader.archive().entries();
+    for (std::uint32_t index = 0; index < entries.size(); ++index) {
+        if (cancel)
+            return false;
+        const RpfEntry &entry = entries[index];
+        const std::string_view name = entry.name;
+        names.add(name.substr(0, name.find('.')));
+        if (entry.kind != RpfEntryKind::Binary)
+            continue;
+        if (asciiLower(name).ends_with(".rpf")) {
+            if (const auto nested = reader.openNested(index); nested && !harvestArchive(names, *nested, cancel))
+                return false;
+            continue;
+        }
+        if (!isTextMetadataName(name) || entry.uncompressedSize > textFileLimit)
+            continue;
+        if (const auto data = reader.fileData(index))
+            names.harvest(std::string_view(reinterpret_cast<const char *>(data->data()), data->size()));
+    }
+    return true;
 }
 
 }
@@ -120,6 +147,22 @@ bool NameTable::load(const std::filesystem::path &file)
 std::filesystem::path nameTableFile(const std::filesystem::path &store)
 {
     return store / "names.txt";
+}
+
+Result<NameTable> harvestInstallNames(const std::filesystem::path &root, const Keys *keys, const std::atomic<bool> &cancel)
+{
+    const auto install = openGameInstall(root);
+    if (!install)
+        return std::unexpected(install.error());
+    NameTable names;
+    for (const std::filesystem::path &relative : listArchives(*install)) {
+        const auto reader = RpfReader::open(openFileSource(root / relative), relative.filename().string(), keys);
+        if (reader && !harvestArchive(names, *reader, cancel))
+            return std::unexpected(Error { "names", 0, "cancelled" });
+    }
+    if (cancel)
+        return std::unexpected(Error { "names", 0, "cancelled" });
+    return names;
 }
 
 }

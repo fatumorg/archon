@@ -2,6 +2,7 @@
 #include "core/meta/metadata_document.h"
 #include "core/meta/name_table.h"
 #include "core/rpf/rpf_reader.h"
+#include "support/browse_fixture.h"
 #include "support/meta_samples.h"
 #include "support/real_install.h"
 #include "support/real_keys.h"
@@ -18,6 +19,7 @@ class TestMetadata : public QObject {
 private slots:
     void namesResolveBothHashings();
     void namesHarvestIdentifiersAndPersist();
+    void namesHarvestTheInstall();
     void psoReadsAsXmlAndSavesIdentically();
     void editingAValueChangesOnlyItsBytes();
     void addingAnItemGrowsTheArray();
@@ -81,6 +83,20 @@ void TestMetadata::namesHarvestIdentifiersAndPersist()
     QVERIFY(loaded.load(file));
     QCOMPARE(loaded.value(joaat("adder")), std::string("adder"));
     QCOMPARE(loaded.size(), names.size());
+}
+
+void TestMetadata::namesHarvestTheInstall()
+{
+    QTemporaryDir directory;
+    const std::filesystem::path root = directory.path().toStdString();
+    writeBrowseFixture(root);
+    const std::atomic<bool> cancel = false;
+    const auto names = harvestInstallNames(root, nullptr, cancel);
+    QVERIFY(names);
+    for (const char *word : { "SMandatoryPacksData", "hello", "deep", "content", "inner", "dlclist" })
+        QCOMPARE(names->value(joaat(asciiLower(word))), std::string(word));
+    const std::atomic<bool> cancelled = true;
+    QVERIFY(!harvestInstallNames(root, nullptr, cancelled));
 }
 
 void TestMetadata::psoReadsAsXmlAndSavesIdentically()
@@ -210,7 +226,7 @@ void TestMetadata::realFilesRoundTrip()
                     walk(*nested, prefix + archive.archive().path(index) + "/");
                 continue;
             }
-            if (!name.ends_with(".ymt") && !name.ends_with(".ymap") && !name.ends_with(".ytyp") && !name.ends_with(".ymf"))
+            if (!isBinaryMetadataName(name))
                 continue;
             const auto file = archive.storedFile(index);
             if (!file || !isBinaryMetadata(*file))

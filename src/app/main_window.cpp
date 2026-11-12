@@ -13,6 +13,7 @@
 #include "app/text_editor.h"
 #include "app/texture_viewer.h"
 #include "core/io/ascii.h"
+#include "core/meta/metadata_document.h"
 #include "core/meta/text_file.h"
 #include "core/rsc/resource_file.h"
 #include "core/rsc/rsc7.h"
@@ -616,11 +617,12 @@ void MainWindow::activate(QTreeWidgetItem *item)
         openTextures(QString::fromStdString(node.name));
         return;
     }
-    if (isTextMetadataName(node.name) && node.size > textFileLimit) {
+    const bool metadata = isTextMetadataName(node.name) || isBinaryMetadataName(node.name);
+    if (metadata && node.size > textFileLimit) {
         QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(textTooLargeMessage(node.name)));
         return;
     }
-    if (isTextMetadataName(node.name)) {
+    if (metadata) {
         openText(QString::fromStdString(node.name));
         return;
     }
@@ -1003,9 +1005,45 @@ void MainWindow::openTextures(const QString &name)
     viewer.exec();
 }
 
+const NameTable &MainWindow::metadataNames()
+{
+    if (names_)
+        return *names_;
+    NameTable loaded;
+    if (!loaded.load(nameTableFile(store_))) {
+        runBusy(this, tr("Collecting names…"), [&](const std::atomic<bool> &cancel) {
+            if (auto harvested = harvestInstallNames(root_, keys_.get(), cancel)) {
+                std::filesystem::create_directories(store_);
+                harvested->save(nameTableFile(store_));
+                loaded = std::move(*harvested);
+            }
+        });
+    }
+    names_ = std::move(loaded);
+    return *names_;
+}
+
 void MainWindow::openText(const QString &name)
 {
     const auto file = readEntry(name);
+    if (file && isBinaryMetadata(*file)) {
+        const auto document = openMetadata(*file, metadataNames());
+        if (!document) {
+            QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(document.error().message));
+            return;
+        }
+        const TextFile xml { QString::fromStdString(document->xml), false, false, false };
+        TextEditor editor(name, xml, editMode_, [this, name, original = *file](const std::vector<std::byte> &bytes) -> Result<void> {
+            const auto saved = saveMetadata(original, std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()), metadataNames());
+            if (!saved)
+                return std::unexpected(saved.error());
+            return saveEntry(name, *saved);
+        }, this);
+        if (!document->readOnlyReason.empty())
+            editor.showReadOnly(QString::fromStdString(document->readOnlyReason));
+        editor.exec();
+        return;
+    }
     const auto text = file ? decodeTextFile(*file, name.toStdString()) : Result<TextFile>(std::unexpected(file.error()));
     if (!text) {
         QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(text.error().message));

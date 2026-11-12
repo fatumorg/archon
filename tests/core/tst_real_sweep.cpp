@@ -54,8 +54,7 @@ void walk(const RpfReader &reader, const std::string &archivePath, Totals &total
             continue;
         }
         totals.bytes += data->size();
-        const std::string lower = asciiLower(entry.name);
-        if (lower.ends_with(".ymt") || lower.ends_with(".ymap") || lower.ends_with(".ytyp") || lower.ends_with(".ymf") || lower.ends_with(".pso") || lower.ends_with(".rbf")) {
+        if (isBinaryMetadataName(entry.name)) {
             const auto stored = reader.storedFile(index);
             if (!stored) {
                 totals.failures.push_back(archivePath + " : " + entryPath + " : " + stored.error().message);

@@ -1,6 +1,7 @@
 #include "core/oiv/oiv_installer.h"
 
 #include "core/io/ascii.h"
+#include "core/meta/metadata_document.h"
 #include "core/oiv/content_edit.h"
 #include "core/rpf/rpf_reader.h"
 #include "core/rpf/rpf_writer.h"
@@ -82,13 +83,14 @@ struct Level {
 
 class Installer {
 public:
-    Installer(Transaction &transaction, const ZipArchive &zip, const OivPackage &package, InstallTarget target, std::filesystem::path root, const Keys *keys)
+    Installer(Transaction &transaction, const ZipArchive &zip, const OivPackage &package, InstallTarget target, std::filesystem::path root, const Keys *keys, std::filesystem::path names)
         : transaction_(transaction)
         , zip_(zip)
         , package_(package)
         , target_(target)
         , root_(std::move(root))
         , keys_(keys)
+        , namesFile_(std::move(names))
     {
     }
 
@@ -216,7 +218,8 @@ private:
             return rebuildArchive(transaction_, *file, keys_);
         }
         case OivCommand::Kind::Text:
-        case OivCommand::Kind::Xml: {
+        case OivCommand::Kind::Xml:
+        case OivCommand::Kind::Pso: {
             const std::filesystem::path file = resolvedUnder(root_, command.path);
             std::vector<std::byte> original;
             if (isRegular(file)) {
@@ -224,7 +227,7 @@ private:
                 if (!read)
                     return std::unexpected(read.error());
                 original = std::move(*read);
-            } else if (command.kind == OivCommand::Kind::Xml || !command.createIfNotExist) {
+            } else if (command.kind != OivCommand::Kind::Text || !command.createIfNotExist) {
                 return failure(command.path + " was not found in the game folder");
             }
             auto edited = editedContent(command, original);
@@ -232,22 +235,37 @@ private:
                 return std::unexpected(edited.error());
             return replaceWith(file, *edited);
         }
-        case OivCommand::Kind::Pso:
-            return psoRefused();
         }
         return {};
     }
 
-    static std::unexpected<Error> psoRefused()
+    const NameTable &names()
     {
-        return failure("PSO commands need metadata support, which is not built yet.");
+        if (!namesLoaded_) {
+            names_.load(namesFile_);
+            namesLoaded_ = true;
+        }
+        return names_;
     }
 
-    static Result<std::vector<std::byte>> editedContent(const OivCommand &command, std::span<const std::byte> original)
+    Result<std::vector<std::byte>> editedContent(const OivCommand &command, std::span<const std::byte> original)
     {
         if (command.kind == OivCommand::Kind::Text)
             return applyTextEdits(original, command.text);
-        return applyXmlEdits(original, command.xml);
+        if (command.kind == OivCommand::Kind::Xml)
+            return applyXmlEdits(original, command.xml);
+        const auto document = openMetadata(original, names());
+        if (!document)
+            return failure(command.path + ": " + document.error().message);
+        if (!document->readOnlyReason.empty())
+            return failure(command.path + ": " + document->readOnlyReason);
+        const auto edited = applyXmlEdits(std::as_bytes(std::span(document->xml.data(), document->xml.size())), command.xml);
+        if (!edited)
+            return std::unexpected(edited.error());
+        const auto saved = saveMetadata(original, std::string_view(reinterpret_cast<const char *>(edited->data()), edited->size()), names());
+        if (!saved)
+            return failure(command.path + ": " + saved.error().message);
+        return saved;
     }
 
     Result<RpfReader> openLevel(const Level &level) const
@@ -350,11 +368,12 @@ private:
                     return rebuilt;
                 break;
             case OivCommand::Kind::Text:
-            case OivCommand::Kind::Xml: {
+            case OivCommand::Kind::Xml:
+            case OivCommand::Kind::Pso: {
                 auto original = readEntry(level, command.path);
                 if (!original)
                     return std::unexpected(original.error());
-                if (!*original && (command.kind == OivCommand::Kind::Xml || !command.createIfNotExist))
+                if (!*original && (command.kind != OivCommand::Kind::Text || !command.createIfNotExist))
                     return failure(command.path + " was not found in " + level.file.filename().string());
                 auto edited = editedContent(command, original->value_or(std::vector<std::byte>()));
                 if (!edited)
@@ -363,8 +382,6 @@ private:
                     return put;
                 break;
             }
-            case OivCommand::Kind::Pso:
-                return psoRefused();
             case OivCommand::Kind::Add:
                 break;
             }
@@ -378,6 +395,9 @@ private:
     InstallTarget target_;
     std::filesystem::path root_;
     const Keys *keys_;
+    std::filesystem::path namesFile_;
+    NameTable names_;
+    bool namesLoaded_ = false;
     QTemporaryDir temporary_;
     std::size_t extracted_ = 0;
 };
@@ -393,7 +413,7 @@ Result<void> installOivPackage(const ZipArchive &zip, const OivPackage &package,
     auto transaction = Transaction::begin(store, root, description);
     if (!transaction)
         return std::unexpected(transaction.error());
-    Installer installer(*transaction, zip, package, target, root, keys.get());
+    Installer installer(*transaction, zip, package, target, root, keys.get(), nameTableFile(store));
     if (auto done = installer.run(package.contents[content].commands); !done)
         return done;
     return transaction->commit();

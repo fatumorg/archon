@@ -1,5 +1,9 @@
 #pragma once
 
+#include "core/crypto/keys.h"
+#include "core/io/error.h"
+
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -29,5 +33,6 @@ private:
 
 std::string hashText(std::uint32_t hash);
 std::filesystem::path nameTableFile(const std::filesystem::path &store);
+Result<NameTable> harvestInstallNames(const std::filesystem::path &root, const Keys *keys, const std::atomic<bool> &cancel);
 
 }

@@ -7,6 +7,7 @@
 #include "app/search_dialog.h"
 #include "app/style.h"
 #include "core/game/game_browser.h"
+#include "core/meta/metadata_document.h"
 #include "core/rsc/resource_file.h"
 #include "core/rsc/rsc7.h"
 #include "core/ytd/texture_pixels.h"
@@ -15,6 +16,7 @@
 #include "core/rpf/rpf_reader.h"
 #include "core/safety/transaction.h"
 #include "support/browse_fixture.h"
+#include "support/meta_samples.h"
 #include "support/modal_driver.h"
 #include "support/zip_builder.h"
 #include "support/temp_files.h"
@@ -130,6 +132,7 @@ private slots:
     void editionIsShownAndGameChoiceCanBeCancelled();
     void textMetadataOpensEditsAndSaves();
     void hugeTextFileIsRefusedBeforeReading();
+    void binaryMetadataOpensAsXmlAndSaves();
 
 private:
     void turnOnEditMode()
@@ -880,6 +883,45 @@ void TestMainWindow::hugeTextFileIsRefusedBeforeReading()
     emit list_->itemActivated(row(list_, QStringLiteral("huge.log")), 0);
     QVERIFY(!editorOpened);
     QCOMPARE(boxes, QStringList { QStringLiteral("huge.log is larger than 64 MiB") });
+}
+
+void TestMainWindow::binaryMetadataOpensAsXmlAndSaves()
+{
+    RpfBuilder mods;
+    mods.addBinary("data/x.ymt", samplePso(), false);
+    writeFile(root_ / "mods" / "common.rpf", mods.build());
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("mods/common.rpf/data")));
+    QString shown;
+    QStringList boxes;
+    QTimer driver;
+    driver.setInterval(20);
+    connect(&driver, &QTimer::timeout, this, [&shown, &boxes] {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            boxes.append(box->text());
+            QTimer::singleShot(0, box, &QWidget::close);
+            return;
+        }
+        auto *editor = qobject_cast<TextEditor *>(QApplication::activeModalWidget());
+        if (editor == nullptr || !shown.isEmpty())
+            return;
+        auto *text = editor->findChild<QPlainTextEdit *>(QStringLiteral("textEdit"));
+        shown = text->toPlainText();
+        QTimer::singleShot(0, editor, [editor, text] {
+            text->setPlainText(text->toPlainText().replace(QStringLiteral("value=\"1.5\""), QStringLiteral("value=\"2.5\"")));
+            editor->save();
+            editor->accept();
+        });
+    });
+    driver.start();
+    emit list_->itemActivated(row(list_, QStringLiteral("x.ymt")), 0);
+    QVERIFY2(boxes.isEmpty(), qPrintable(boxes.join(QLatin1Char('\n'))));
+    QVERIFY(shown.contains(QStringLiteral("value=\"1.5\" />")));
+    QVERIFY(std::filesystem::exists(nameTableFile(store_)));
+    const std::string saved = entryText(root_ / "mods" / "common.rpf", "data/x.ymt");
+    const auto reopened = openMetadata(std::as_bytes(std::span(saved.data(), saved.size())), NameTable());
+    QVERIFY(reopened);
+    QVERIFY(reopened->xml.find("value=\"2.5\"") != std::string::npos);
 }
 
 QTEST_MAIN(TestMainWindow)

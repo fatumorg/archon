@@ -22,6 +22,7 @@ struct MetadataDocument {
     std::string readOnlyReason;
 };
 
+bool isBinaryMetadataName(std::string_view name);
 bool isBinaryMetadata(std::span<const std::byte> file);
 Result<MetadataDocument> openMetadata(std::span<const std::byte> file, const NameTable &names);
 Result<std::vector<std::byte>> saveMetadata(std::span<const std::byte> original, std::string_view xml, const NameTable &names);

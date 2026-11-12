@@ -104,6 +104,14 @@ QString TextEditor::lineLabel(int line)
     return QStringLiteral("%1").arg(line, 4, 10, QLatin1Char('0'));
 }
 
+void TextEditor::showReadOnly(const QString &reason)
+{
+    editable_ = false;
+    text_->setReadOnly(true);
+    saveButton_->setEnabled(false);
+    status_->setText(reason);
+}
+
 void TextEditor::updateMargins()
 {
     const int digits = std::max(4, static_cast<int>(QString::number(text_->blockCount()).size()));

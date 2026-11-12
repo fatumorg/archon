@@ -16,6 +16,7 @@ private slots:
     void showsTextReadOnly();
     void editsAndSavesKeepingLineEndings();
     void closingWithChangesAsks();
+    void readOnlyReasonIsShown();
 };
 
 namespace {
@@ -76,6 +77,18 @@ void TestTextEditor::closingWithChangesAsks()
     editor.reject();
     QVERIFY(driver.done());
     QVERIFY(!editor.isVisible());
+}
+
+void TestTextEditor::readOnlyReasonIsShown()
+{
+    TextEditor editor(QStringLiteral("x.ymt"), crlfFile(), true, [](const std::vector<std::byte> &) -> Result<void> { return {}; });
+    editor.showReadOnly(QStringLiteral("This file cannot be saved byte-exact yet (reason)."));
+    auto *text = editor.findChild<QPlainTextEdit *>(QStringLiteral("textEdit"));
+    QVERIFY(text->isReadOnly());
+    text->setPlainText(QStringLiteral("changed"));
+    QVERIFY(!editor.findChild<QPushButton *>(QStringLiteral("saveButton"))->isEnabled());
+    QVERIFY(!editor.save());
+    QCOMPARE(editor.findChild<QLabel *>(QStringLiteral("editorStatus"))->text(), QStringLiteral("This file cannot be saved byte-exact yet (reason)."));
 }
 
 QTEST_MAIN(TestTextEditor)

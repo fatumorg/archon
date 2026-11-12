@@ -1,6 +1,7 @@
 #include "core/meta/metadata_document.h"
 
 #include "core/crypto/inflate.h"
+#include "core/io/ascii.h"
 #include "core/meta/meta_xml.h"
 #include "core/meta/pso_file.h"
 #include "core/meta/rbf_file.h"
@@ -9,6 +10,7 @@
 #include "core/rsc/rsc7.h"
 
 #include <algorithm>
+#include <array>
 
 namespace archon {
 
@@ -60,6 +62,12 @@ bool sameContent(MetadataFormat format, std::span<const std::byte> original, std
     return before && after && before->systemFlags == after->systemFlags && before->graphicsFlags == after->graphicsFlags && before->pages == after->pages;
 }
 
+}
+
+bool isBinaryMetadataName(std::string_view name)
+{
+    const std::string lower = asciiLower(name);
+    return std::ranges::any_of(std::array<std::string_view, 6> { ".ymt", ".ymf", ".ymap", ".ytyp", ".pso", ".rbf" }, [&lower](std::string_view extension) { return lower.ends_with(extension); });
 }
 
 bool isBinaryMetadata(std::span<const std::byte> file)

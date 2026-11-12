@@ -22,6 +22,7 @@ public:
     TextEditor(const QString &name, TextFile file, bool editable, Save save, QWidget *parent = nullptr);
 
     static QString lineLabel(int line);
+    void showReadOnly(const QString &reason);
     bool save();
     void reject() override;
 

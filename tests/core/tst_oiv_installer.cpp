@@ -1,7 +1,9 @@
+#include "core/meta/metadata_document.h"
 #include "core/oiv/oiv_installer.h"
 #include "core/rpf/rpf_reader.h"
 #include "core/safety/transaction.h"
 #include "support/browse_fixture.h"
+#include "support/meta_samples.h"
 #include "support/real_install.h"
 #include "support/real_keys.h"
 #include "support/temp_files.h"
@@ -24,9 +26,10 @@ private slots:
     void resolvesCaseAndSeparators();
     void existingModsCopyIsReused();
     void oneHistoryEntryThatRollsBack();
-    void psoIsRefused();
+    void psoEditsGoThroughXml();
     void installsOfficialExample();
     void installsTutorialOnCopies();
+    void psoEditsARealFile();
 
 private:
     Result<void> install(const std::string &content, std::vector<std::pair<std::string, std::string>> files, InstallTarget target)
@@ -202,11 +205,20 @@ void TestOivInstaller::oneHistoryEntryThatRollsBack()
     QCOMPARE(readFile(root_ / "common.rpf"), common);
 }
 
-void TestOivInstaller::psoIsRefused()
+void TestOivInstaller::psoEditsGoThroughXml()
 {
-    const auto installed = install(R"(<archive path="common.rpf" createIfNotExist="False" type="RPF7"><pso path="x.ymt"><remove xpath="/x"/></pso></archive>)", {}, InstallTarget::Game);
-    QVERIFY(!installed);
-    QCOMPARE(installed.error().message, std::string("PSO commands need metadata support, which is not built yet."));
+    std::filesystem::create_directories(root_ / "data");
+    writeFile(root_ / "data" / "x.ymt", samplePso());
+    std::filesystem::create_directories(store_);
+    QVERIFY(sampleNames().save(nameTableFile(store_)));
+    const auto installed = install(R"(<pso path="data\x.ymt"><remove xpath="/csample/items/Item[3]"/></pso>)", {}, InstallTarget::Game);
+    QVERIFY2(installed, installed ? "" : installed.error().message.c_str());
+    const auto reopened = openMetadata(readFile(root_ / "data" / "x.ymt"), sampleNames());
+    QVERIFY2(reopened, reopened ? "" : reopened.error().message.c_str());
+    QVERIFY(reopened->xml.find("<Item value=\"2\" />") != std::string::npos);
+    QVERIFY(reopened->xml.find("<Item value=\"3\" />") == std::string::npos);
+    const auto missing = install(R"(<pso path="data\none.ymt"><remove xpath="/csample"/></pso>)", {}, InstallTarget::Game);
+    QVERIFY(!missing);
 }
 
 void TestOivInstaller::installsOfficialExample()
@@ -298,6 +310,31 @@ void TestOivInstaller::installsTutorialOnCopies()
     QCOMPARE(history.size(), std::size_t(1));
     QVERIFY(rollbackTransaction(store, history.front().id));
     QVERIFY(!std::filesystem::exists(root / "mods"));
+}
+
+void TestOivInstaller::psoEditsARealFile()
+{
+    ARCHON_REQUIRE_REAL();
+    const Keys *keys = realKeys();
+    QVERIFY(keys);
+    const auto reader = RpfReader::open(openFileSource(*realGameDir() / "x64a.rpf"), "x64a.rpf", keys);
+    QVERIFY(reader);
+    const auto index = reader->archive().find("data/playerspecialabilities.ymt");
+    QVERIFY(index);
+    const auto original = reader->storedFile(*index);
+    QVERIFY(original);
+    std::filesystem::create_directories(root_ / "data");
+    writeFile(root_ / "data" / "playerspecialabilities.ymt", *original);
+    const auto before = openMetadata(*original, NameTable());
+    QVERIFY(before && before->readOnlyReason.empty());
+    QVERIFY(before->xml.find("value=\"0.325\"") != std::string::npos);
+    const auto installed = install(R"(<pso path="data\playerspecialabilities.ymt"><remove xpath="/hash_A042ED3C/hash_6208614E/Item[1]"/></pso>)", {}, InstallTarget::Game);
+    QVERIFY2(installed, installed ? "" : installed.error().message.c_str());
+    const auto after = openMetadata(readFile(root_ / "data" / "playerspecialabilities.ymt"), NameTable());
+    QVERIFY2(after, after ? "" : after.error().message.c_str());
+    QVERIFY(after->readOnlyReason.empty());
+    QVERIFY(after->xml.find("value=\"0.325\"") == std::string::npos);
+    QVERIFY(after->xml.find("value=\"0.8\"") != std::string::npos);
 }
 
 QTEST_APPLESS_MAIN(TestOivInstaller)
