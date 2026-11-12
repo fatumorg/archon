@@ -58,9 +58,12 @@ PackageInstallerDialog::PackageInstallerDialog(const std::filesystem::path &pack
         error_ = tr("Cannot read %1.").arg(QString::fromStdString(package.string()));
         return;
     }
-    const QByteArray content = file.readAll();
-    const auto bytes = std::as_bytes(std::span(content.constData(), static_cast<std::size_t>(content.size())));
-    auto zip = ZipArchive::open(std::vector<std::byte>(bytes.begin(), bytes.end()));
+    std::vector<std::byte> bytes(static_cast<std::size_t>(file.size()));
+    if (file.read(reinterpret_cast<char *>(bytes.data()), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size())) {
+        error_ = tr("Cannot read %1.").arg(QString::fromStdString(package.string()));
+        return;
+    }
+    auto zip = ZipArchive::open(std::move(bytes));
     if (!zip) {
         error_ = tr("This file is not an OIV package: %1").arg(text(zip.error().message));
         return;

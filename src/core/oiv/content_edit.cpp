@@ -6,6 +6,7 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
+#include <set>
 #include <sstream>
 
 namespace archon {
@@ -118,11 +119,25 @@ Result<std::vector<std::byte>> applyXmlEdits(std::span<const std::byte> original
         return failure(std::string("the file is not valid XML: ") + parsed.description());
 
     for (const OivXml &edit : edits) {
-        const auto nodes = select(document, edit.xpath);
+        auto nodes = select(document, edit.xpath);
         if (!nodes)
             return std::unexpected(nodes.error());
         if (nodes->empty() && edit.kind != OivXml::Kind::Remove)
             return failure("XPath " + edit.xpath + " selects nothing");
+        if (edit.kind != OivXml::Kind::Add) {
+            std::set<pugi::xml_node_struct *> selected;
+            for (const pugi::xml_node node : *nodes)
+                selected.insert(node.internal_object());
+            std::vector<pugi::xml_node> outermost;
+            for (const pugi::xml_node node : *nodes) {
+                bool nested = false;
+                for (pugi::xml_node parent = node.parent(); parent && !nested; parent = parent.parent())
+                    nested = selected.contains(parent.internal_object());
+                if (!nested)
+                    outermost.push_back(node);
+            }
+            *nodes = std::move(outermost);
+        }
         pugi::xml_document fragment;
         const std::string wrapped = "<fragment>" + edit.fragment + "</fragment>";
         if (!fragment.load_buffer(wrapped.data(), wrapped.size(), pugi::parse_default))

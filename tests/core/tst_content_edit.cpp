@@ -18,6 +18,7 @@ private slots:
     void badXPathIsError();
     void addToNothingIsError();
     void entitiesAreNotExpanded();
+    void nestedMatchesAreSafe();
 };
 
 namespace {
@@ -124,6 +125,17 @@ void TestContentEdit::entitiesAreNotExpanded()
     const auto result = applyXmlEdits(toVector(bomb), std::vector<OivXml> { xml(OivXml::Kind::Add, "/r", "<x/>") });
     if (result)
         QVERIFY(result->size() < 4096);
+}
+
+void TestContentEdit::nestedMatchesAreSafe()
+{
+    std::string nested = "<a>";
+    for (int i = 0; i < 3000; ++i)
+        nested += "<Item><Item><x/></Item></Item>";
+    nested += "<keep/></a>";
+    QCOMPARE(edited({ xml(OivXml::Kind::Remove, "//Item") }, nested), std::string("<a>\n\t<keep />\n</a>\n"));
+    const std::string replaced = edited({ xml(OivXml::Kind::Replace, "//Item", "<y/>") }, "<a><Item><Item/></Item></a>");
+    QCOMPARE(replaced, std::string("<a>\n\t<y />\n</a>\n"));
 }
 
 QTEST_APPLESS_MAIN(TestContentEdit)
