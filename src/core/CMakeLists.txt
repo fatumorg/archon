@@ -10,6 +10,7 @@ add_library(archon-core STATIC
     game/game_browser.cpp
     game/game_edit.cpp
     game/game_install.cpp
+    prefix/prefix.cpp
     io/byte_reader.cpp
     io/path_resolver.cpp
     io/writable_file.cpp

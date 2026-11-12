@@ -40,6 +40,7 @@ archon_add_test(tst_rpf_writer core/tst_rpf_writer.cpp)
 archon_add_test(tst_game_edit core/tst_game_edit.cpp)
 archon_add_test(tst_zip_archive core/tst_zip_archive.cpp)
 archon_add_test(tst_asi_manager core/tst_asi_manager.cpp)
+archon_add_test(tst_prefix core/tst_prefix.cpp)
 target_link_libraries(tst_zip_archive PRIVATE PkgConfig::LIBZIP)
 archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
 
