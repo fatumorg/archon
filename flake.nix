@@ -27,6 +27,9 @@
           pkgs.openssl
           pkgs.libzip
         ];
+        qtWrapperArgs = [
+          "--suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.protontricks ]}"
+        ];
         doCheck = true;
         checkPhase = ''
           runHook preCheck
