@@ -109,7 +109,7 @@ void TestOivWriter::targetsSplitIntoArchives()
     QCOMPARE(vehicles.children.size(), std::size_t(3));
     QCOMPARE(vehicles.children[2].kind, OivCommand::Kind::Delete);
     QCOMPARE(commands[2].kind, OivCommand::Kind::Add);
-    QCOMPARE(toText(*oivSource(*zip, *read, vehicles.children[1].source)), std::string("ytd"));
+    QCOMPARE(toText(*zip->read(*oivSourceName(*zip, *read, vehicles.children[1].source), 1024)), std::string("ytd"));
 }
 
 void TestOivWriter::specialCharactersSurvive()
@@ -135,8 +135,8 @@ void TestOivWriter::duplicateFileNamesSurvive()
     package.items = { { PackageItem::Kind::Add, source("one/same.txt", "first"), "a/same.txt" }, { PackageItem::Kind::Add, source("two/same.txt", "second"), "b/same.txt" } };
     const auto zip = written(package);
     const auto read = readOivPackage(*zip);
-    QCOMPARE(toText(*oivSource(*zip, *read, read->contents[0].commands[0].source)), std::string("first"));
-    QCOMPARE(toText(*oivSource(*zip, *read, read->contents[0].commands[1].source)), std::string("second"));
+    QCOMPARE(toText(*zip->read(*oivSourceName(*zip, *read, read->contents[0].commands[0].source), 1024)), std::string("first"));
+    QCOMPARE(toText(*zip->read(*oivSourceName(*zip, *read, read->contents[0].commands[1].source), 1024)), std::string("second"));
 }
 
 void TestOivWriter::invalidDraftsAreRefused()

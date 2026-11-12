@@ -1,7 +1,9 @@
 #include "core/io/zip_archive.h"
 #include "support/test_bytes.h"
+#include "support/temp_files.h"
 #include "support/zip_builder.h"
 
+#include <QTemporaryDir>
 #include <QTest>
 
 using namespace archon;
@@ -14,6 +16,7 @@ private slots:
     void missingMemberIsError();
     void memberOverLimitIsRefused();
     void garbageIsNotAZip();
+    void opensFromDiskAndExtractsToFile();
 };
 
 void TestZipArchive::listsAndReadsMembers()
@@ -50,7 +53,27 @@ void TestZipArchive::memberOverLimitIsRefused()
 void TestZipArchive::garbageIsNotAZip()
 {
     QVERIFY(!ZipArchive::open(toVector("this is not a zip file at all")));
-    QVERIFY(!ZipArchive::open({}));
+    QVERIFY(!ZipArchive::open(std::vector<std::byte> {}));
+}
+
+void TestZipArchive::opensFromDiskAndExtractsToFile()
+{
+    QTemporaryDir directory;
+    const std::filesystem::path folder = pathOf(directory);
+    std::string big(3'000'000, '\0');
+    for (std::size_t index = 0; index < big.size(); ++index)
+        big[index] = static_cast<char>(index * 7919 % 251);
+    writeFile(folder / "package.oiv", makeZip({ { "small.txt", "s" }, { "content/big.bin", big } }));
+    const auto zip = ZipArchive::open(folder / "package.oiv");
+    QVERIFY2(zip, zip ? "" : zip.error().message.c_str());
+    QCOMPARE(zip->names(), (std::vector<std::string> { "small.txt", "content/big.bin" }));
+    QVERIFY(zip->extract("content/big.bin", folder / "big.bin"));
+    QCOMPARE(toText(readFile(folder / "big.bin")), big);
+    QVERIFY(!zip->extract("missing.bin", folder / "missing.bin"));
+    QVERIFY(!zip->extract("small.txt", folder / "absent" / "small.txt"));
+    writeFile(folder / "garbage.oiv", toVector("this is not a zip file at all"));
+    QVERIFY(!ZipArchive::open(folder / "garbage.oiv"));
+    QVERIFY(!ZipArchive::open(folder / "nothing.oiv"));
 }
 
 QTEST_APPLESS_MAIN(TestZipArchive)

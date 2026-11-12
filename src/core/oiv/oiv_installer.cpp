@@ -106,13 +106,18 @@ public:
     }
 
 private:
+    Result<void> extractSource(const std::string &source, const std::filesystem::path &destination)
+    {
+        const auto name = oivSourceName(zip_, package_, source);
+        if (!name)
+            return std::unexpected(name.error());
+        return zip_.extract(*name, destination);
+    }
+
     Result<std::filesystem::path> extract(const std::string &source)
     {
-        auto bytes = oivSource(zip_, package_, source);
-        if (!bytes)
-            return std::unexpected(bytes.error());
         const std::filesystem::path file = std::filesystem::path(temporary_.path().toStdString()) / std::to_string(++extracted_);
-        if (auto written = writeBytes(file, *bytes); !written)
+        if (auto written = extractSource(source, file); !written)
             return std::unexpected(written.error());
         return file;
     }
@@ -194,10 +199,10 @@ private:
     {
         switch (command.kind) {
         case OivCommand::Kind::Add: {
-            auto bytes = oivSource(zip_, package_, command.source);
-            if (!bytes)
-                return std::unexpected(bytes.error());
-            return replaceWith(loosePath(command.path), *bytes);
+            const std::filesystem::path file = loosePath(command.path);
+            if (auto made = transaction_.createDirectories(file.parent_path()); !made)
+                return made;
+            return transaction_.replaceFile(file, [this, &command](const std::filesystem::path &temporary) { return extractSource(command.source, temporary); });
         }
         case OivCommand::Kind::Delete: {
             const std::filesystem::path file = loosePath(command.path);

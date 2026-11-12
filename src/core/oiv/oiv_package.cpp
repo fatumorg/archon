@@ -16,7 +16,6 @@ namespace {
 constexpr char format[] = "oiv";
 constexpr std::uint64_t assemblyLimit = 16u << 20;
 constexpr std::uint64_t iconLimit = 8u << 20;
-constexpr std::uint64_t sourceLimit = 2048ull << 20;
 constexpr std::uint32_t defaultHeaderColor = 0xFF23366A;
 constexpr std::uint32_t defaultIconColor = 0xFF3B5998;
 
@@ -350,13 +349,14 @@ Result<OivPackage> readOivPackage(const ZipArchive &zip)
     return package;
 }
 
-Result<std::vector<std::byte>> oivSource(const ZipArchive &zip, const OivPackage &package, std::string_view source)
+Result<std::string> oivSourceName(const ZipArchive &zip, const OivPackage &package, std::string_view source)
 {
     const std::string wanted = isLegacy(package.version) ? std::string(source) : "content/" + std::string(source);
     const auto name = zipNameFor(zip, wanted);
     if (!name)
         return failure("the package does not contain " + std::string(source));
-    return zip.read(*name, sourceLimit);
+    return *name;
 }
+
 
 }

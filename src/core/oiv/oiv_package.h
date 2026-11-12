@@ -66,6 +66,6 @@ struct OivPackage {
 
 Result<OivPackage> readOivPackage(const ZipArchive &zip);
 std::optional<std::string> normalizedOivPath(std::string_view path);
-Result<std::vector<std::byte>> oivSource(const ZipArchive &zip, const OivPackage &package, std::string_view source);
+Result<std::string> oivSourceName(const ZipArchive &zip, const OivPackage &package, std::string_view source);
 
 }

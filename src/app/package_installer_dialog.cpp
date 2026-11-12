@@ -4,7 +4,6 @@
 #include "app/style.h"
 
 #include <QButtonGroup>
-#include <QFile>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -53,17 +52,7 @@ PackageInstallerDialog::PackageInstallerDialog(const std::filesystem::path &pack
     setWindowIcon(loadIcon(QStringLiteral("package")));
     resize(680, 520);
 
-    QFile file(package);
-    if (!file.open(QIODevice::ReadOnly)) {
-        error_ = tr("Cannot read %1.").arg(QString::fromStdString(package.string()));
-        return;
-    }
-    std::vector<std::byte> bytes(static_cast<std::size_t>(file.size()));
-    if (file.read(reinterpret_cast<char *>(bytes.data()), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size())) {
-        error_ = tr("Cannot read %1.").arg(QString::fromStdString(package.string()));
-        return;
-    }
-    auto zip = ZipArchive::open(std::move(bytes));
+    auto zip = ZipArchive::open(package);
     if (!zip) {
         error_ = tr("This file is not an OIV package: %1").arg(text(zip.error().message));
         return;

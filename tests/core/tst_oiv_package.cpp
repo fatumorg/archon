@@ -235,10 +235,10 @@ void TestOivPackage::sourceLookupIgnoresCaseAndSeparators()
     ZipArchive zip = ZipArchive::open(makeZip({ { "x", "y" } })).value();
     const auto package = read({ { "assembly.xml", package22(R"(<add source="Adder\Vehicles\ADDER.yft">a.yft</add>)") }, { "content/adder/vehicles/adder.yft", "model" } }, &zip);
     QVERIFY(package);
-    const auto source = oivSource(zip, *package, package->contents[0].commands[0].source);
+    const auto source = oivSourceName(zip, *package, package->contents[0].commands[0].source);
     QVERIFY2(source, source ? "" : source.error().message.c_str());
-    QCOMPARE(toText(*source), std::string("model"));
-    QVERIFY(!oivSource(zip, *package, "missing.bin"));
+    QCOMPARE(toText(*zip.read(*source, 1024)), std::string("model"));
+    QVERIFY(!oivSourceName(zip, *package, "missing.bin"));
 }
 
 void TestOivPackage::dtdIsNotExpanded()
@@ -263,7 +263,7 @@ void TestOivPackage::readsPublicSamples()
     QVERIFY2(read21, read21 ? "" : read21.error().message.c_str());
     QCOMPARE(read21->version, std::string("2.1"));
     QCOMPARE(read21->contents[0].commands.size(), std::size_t(2));
-    QVERIFY(oivSource(*package21, *read21, "dlclist.xml"));
+    QVERIFY(oivSourceName(*package21, *read21, "dlclist.xml"));
 
     const auto package11 = ZipArchive::open(readFile(samples / "Package11.zip"));
     QVERIFY(package11);
@@ -285,8 +285,8 @@ void TestOivPackage::readsPublicSamples()
     const auto tutorial = readOivPackage(*tutorialZip);
     QVERIFY2(tutorial, tutorial ? "" : tutorial.error().message.c_str());
     QCOMPARE(tutorial->contents[0].commands.size(), std::size_t(4));
-    QVERIFY(oivSource(*tutorialZip, *tutorial, "adder/vehicles/adder.yft"));
-    QVERIFY(!oivSource(*tutorialZip, *tutorial, "r8ppi/dlc.rpf"));
+    QVERIFY(oivSourceName(*tutorialZip, *tutorial, "adder/vehicles/adder.yft"));
+    QVERIFY(!oivSourceName(*tutorialZip, *tutorial, "r8ppi/dlc.rpf"));
 }
 
 QTEST_APPLESS_MAIN(TestOivPackage)
