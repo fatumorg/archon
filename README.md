@@ -6,7 +6,7 @@ ARCHON ships no game files and no encryption keys. Keys are derived from your ow
 
 ## Status
 
-Early development. ARCHON browses and edits GTA V Legacy and Enhanced installs: archives and nested archives, texture dictionaries, text metadata, OIV packages, ASI plugins and the Proton prefix. Binary metadata (PSO, RSC META, RBF) and the model preview are not built yet.
+Early development. ARCHON browses and edits GTA V Legacy and Enhanced installs: archives and nested archives, texture dictionaries, text and binary metadata, OIV packages, ASI plugins and the Proton prefix. The model preview is not built yet.
 
 ## GTA V Enhanced
 
@@ -24,6 +24,8 @@ Every change is written through a journal and backed up before any byte is overw
 
 Opening a `.meta`, `.xml`, `.dat`, `.txt`, `.ini`, `.cfg`, `.ide`, `.ipl`, `.log`, `.csv`, `.lua` or `.json` file shows it with line numbers. In edit mode it can be changed and saved; the file keeps its encoding (UTF-8 or Latin-1), byte-order mark and line endings. Saving inside an archive outside `mods` asks first, like every other archive edit.
 
+Binary metadata (`.ymt`, `.ymf`, `.ymap`, `.ytyp`, `.pso` and `.rbf` in PSO, RSC META or RBF form) opens in the same editor as XML and saves back to its binary form. Names come from the game: the first binary file opened collects every identifier in the install's text files and entry names, and hashes with no known name show as `hash_XXXXXXXX`. A file whose XML does not reproduce every byte of the original opens read-only and says why.
+
 ## Package Creator
 
 Tools > Package Creator writes an OIV 2.2 package. The Package tab holds the name, version, author, descriptions, licence, header colours and icon; the Content tab lists files to add, each with its target folder in the game (archives included, for example `x64e.rpf/levels/gta5/vehicles.rpf`), and game files to delete. Packages it writes are OIV 2.2 and install with the Package Installer.
@@ -38,7 +40,7 @@ Supported formats: DXT1, DXT3, DXT5, ATI1, ATI2, BC7 and the uncompressed A8R8G8
 
 Tools > Package Installer, or opening an `.oiv` file in the file list, shows the package with its own colours, description and licence. It installs into the `mods` folder (default: every archive the package changes is copied there first) or straight into the game folder. A package installs completely or not at all, and it is one entry in Change history, so rolling that entry back uninstalls it.
 
-Supported: OIV 2.0, 2.1 and 2.2 (file add and delete, archives including nested and new ones, defragmentation, text and XML commands) and 1.x packages that target GTA V. PSO commands need the metadata support that is not built yet; a package that uses them is refused before anything changes.
+Supported: OIV 2.0, 2.1 and 2.2 (file add and delete, archives including nested and new ones, defragmentation, text XML and PSO commands) and 1.x packages that target GTA V. PSO commands edit binary metadata through its XML form and are refused for a file that opens read-only.
 
 ## ASI Manager
 
