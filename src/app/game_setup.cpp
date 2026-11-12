@@ -9,6 +9,7 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
+#include <QLockFile>
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
@@ -203,6 +204,17 @@ std::optional<GameSession> openSession(QWidget *parent)
         return std::nullopt;
     }
     return GameSession { *install, std::make_shared<const Keys>(std::move(**keys)), safetyStore(dataDirectory.toStdString(), install->root) };
+}
+
+std::unique_ptr<QLockFile> lockStore(const std::filesystem::path &store)
+{
+    std::error_code error;
+    std::filesystem::create_directories(store, error);
+    auto lock = std::make_unique<QLockFile>(QString::fromStdString((store / "lock").string()));
+    lock->setStaleLockTime(0);
+    if (!lock->tryLock(0))
+        return nullptr;
+    return lock;
 }
 
 }

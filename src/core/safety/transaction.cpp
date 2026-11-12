@@ -25,7 +25,7 @@ constexpr std::size_t maxRecord = maxPreimage + (64u << 10);
 constexpr std::size_t recordOverhead = 9;
 constexpr std::size_t preimageHeader = 12;
 
-enum class Kind : std::uint8_t { Begin = 1, Touch, Preimage, Backup, Directory, Commit };
+enum class Kind : std::uint8_t { Begin = 1, Touch, Preimage, Backup, Directory, Commit, RollingBack };
 
 std::unexpected<Error> failure(std::string message)
 {
@@ -58,6 +58,8 @@ struct Journal {
     std::int64_t time = 0;
     bool begun = false;
     bool committed = false;
+    bool rollingBack = false;
+    std::uint64_t validSize = 0;
     std::vector<Step> steps;
     std::vector<Final> finals;
 };
@@ -103,6 +105,29 @@ Result<void> syncFile(const std::filesystem::path &file)
     return opened->sync();
 }
 
+Result<void> syncParents(const std::filesystem::path &first, const std::filesystem::path &second)
+{
+    if (const auto synced = WritableFile::syncDirectory(first.parent_path()); !synced)
+        return synced;
+    if (second.parent_path() == first.parent_path())
+        return {};
+    return WritableFile::syncDirectory(second.parent_path());
+}
+
+Result<void> appendRecord(WritableFile &file, std::uint64_t &size, Kind kind, std::span<const std::byte> payload)
+{
+    std::vector<std::byte> record;
+    record.reserve(payload.size() + recordOverhead);
+    putInteger(record, static_cast<std::uint8_t>(kind), 1);
+    putInteger(record, payload.size(), 4);
+    putBytes(record, payload);
+    putInteger(record, jenkinsHash(payload), 4);
+    if (const auto written = file.write(size, record); !written)
+        return written;
+    size += record.size();
+    return file.sync();
+}
+
 Result<void> copyThenRename(const std::filesystem::path &from, const std::filesystem::path &partial, const std::filesystem::path &to)
 {
     std::error_code error;
@@ -115,6 +140,8 @@ Result<void> copyThenRename(const std::filesystem::path &from, const std::filesy
     std::filesystem::rename(partial, to, error);
     if (error)
         return failure("cannot write " + to.string());
+    if (const auto synced = WritableFile::syncDirectory(to.parent_path()); !synced)
+        return synced;
     std::filesystem::remove(from, error);
     return {};
 }
@@ -124,7 +151,7 @@ Result<void> moveFile(const std::filesystem::path &from, const std::filesystem::
     std::error_code error;
     std::filesystem::rename(from, to, error);
     if (!error)
-        return {};
+        return syncParents(from, to);
     return copyThenRename(from, partial, to);
 }
 
@@ -213,6 +240,9 @@ bool decode(Journal &journal, Kind kind, std::span<const std::byte> payload, std
         journal.committed = true;
         return true;
     }
+    case Kind::RollingBack:
+        journal.rollingBack = true;
+        return true;
     default:
         return false;
     }
@@ -228,7 +258,7 @@ Result<Journal> readJournal(const std::filesystem::path &directory)
     Journal journal;
     const std::uint64_t size = file->size();
     std::uint64_t position = 0;
-    while (size - position >= recordOverhead && !journal.committed) {
+    while (size - position >= recordOverhead) {
         const auto head = file->read(position, 5);
         if (!head)
             break;
@@ -248,6 +278,7 @@ Result<Journal> readJournal(const std::filesystem::path &directory)
             break;
         position += recordOverhead + length;
     }
+    journal.validSize = position;
     if (!journal.begun)
         return failure("journal in " + directory.string() + " is unreadable");
     return journal;
@@ -275,10 +306,15 @@ Result<void> undo(const std::filesystem::path &directory)
     auto journalFile = WritableFile::open(directory / "journal", false);
     if (!journalFile)
         return std::unexpected(journalFile.error());
+    if (!journal->rollingBack) {
+        std::uint64_t size = journal->validSize;
+        if (const auto marked = appendRecord(*journalFile, size, Kind::RollingBack, {}); !marked)
+            return marked;
+    }
 
     std::vector<const Step *> touches;
     for (const Step &step : journal->steps) {
-        if (step.kind == Kind::Touch)
+        if (step.kind == Kind::Touch && step.existed)
             touches.push_back(&step);
     }
     std::map<std::uint32_t, WritableFile> handles;
@@ -377,17 +413,8 @@ struct Transaction::State {
 
     Result<void> append(Kind kind, const std::vector<std::byte> &payload)
     {
-        std::vector<std::byte> record;
-        record.reserve(payload.size() + recordOverhead);
-        putInteger(record, static_cast<std::uint8_t>(kind), 1);
-        putInteger(record, payload.size(), 4);
-        putBytes(record, payload);
-        putInteger(record, jenkinsHash(payload), 4);
-        if (const auto written = journal->write(journalSize, record); !written)
-            return written;
-        journalSize += record.size();
         changed = true;
-        return journal->sync();
+        return appendRecord(*journal, journalSize, kind, payload);
     }
 
     Result<std::filesystem::path> checked(const std::filesystem::path &file) const
@@ -593,7 +620,7 @@ Result<void> Transaction::replaceFile(const std::filesystem::path &file, const s
     std::filesystem::rename(temporary, *path, error);
     if (error)
         return failure("cannot write " + path->string());
-    return {};
+    return WritableFile::syncDirectory(path->parent_path());
 }
 
 Result<void> Transaction::removeFile(const std::filesystem::path &file)
@@ -693,7 +720,7 @@ std::vector<TransactionRecord> listTransactions(const std::filesystem::path &sto
         const auto journal = readJournal(it->path());
         if (!journal)
             continue;
-        TransactionRecord record { it->path().filename().string(), journal->description, journal->time, {}, journal->committed };
+        TransactionRecord record { it->path().filename().string(), journal->description, journal->time, {}, journal->committed && !journal->rollingBack };
         for (const Step &step : journal->steps) {
             if ((step.kind == Kind::Touch || step.kind == Kind::Backup) && std::ranges::find(record.files, step.path) == record.files.end())
                 record.files.push_back(step.path);
@@ -715,6 +742,8 @@ Result<void> rollbackTransaction(const std::filesystem::path &store, const std::
         const auto journal = readJournal(store / record->id);
         if (!journal)
             return std::unexpected(journal.error());
+        if (journal->rollingBack)
+            continue;
         for (const Final &final : journal->finals) {
             if (std::ranges::find(checked, final.path) != checked.end())
                 continue;

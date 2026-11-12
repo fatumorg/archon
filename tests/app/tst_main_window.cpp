@@ -714,26 +714,34 @@ void TestMainWindow::uncancellableWorkShowsNoCancelButton()
 {
     int dialogs = 0;
     int cancelButtons = 0;
+    bool dismissedEarly = false;
+    QProgressDialog *poked = nullptr;
+    std::atomic<bool> ran { false };
     QTimer probe;
     probe.setInterval(10);
     connect(&probe, &QTimer::timeout, this, [&] {
         auto *progress = qobject_cast<QProgressDialog *>(QApplication::activeModalWidget());
-        if (progress == nullptr)
+        if (poked != nullptr && !ran.load() && (progress == nullptr || !progress->isVisible()))
+            dismissedEarly = true;
+        if (progress == nullptr || poked != nullptr)
             return;
         ++dialogs;
         for (const QPushButton *button : progress->findChildren<QPushButton *>())
             cancelButtons += button->isVisible() ? 1 : 0;
+        poked = progress;
+        QTest::keyClick(progress, Qt::Key_Escape);
+        progress->close();
     });
     probe.start();
-    bool ran = false;
     runBusy(window_.get(), QStringLiteral("Working…"), [&ran] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
         ran = true;
     });
     probe.stop();
-    QVERIFY(ran);
+    QVERIFY(ran.load());
     QVERIFY(dialogs > 0);
     QCOMPARE(cancelButtons, 0);
+    QVERIFY(!dismissedEarly);
 }
 
 QTEST_MAIN(TestMainWindow)

@@ -21,6 +21,9 @@ constexpr char format[] = "rpf7";
 constexpr std::size_t copyChunk = 8u << 20;
 constexpr std::size_t resourceHeaderSize = 16;
 constexpr std::uint64_t maxNestedSize = 0xFFFFFFFFull;
+constexpr std::uint32_t archiveMagic = 0x52504637;
+constexpr std::uint32_t openTag = 0x4E45504F;
+constexpr std::uint32_t aesTag = 0x0FFFFFF9;
 constexpr std::array<std::byte, 4> resourceMagic { std::byte { 'R' }, std::byte { 'S' }, std::byte { 'C' }, std::byte { '7' } };
 
 std::unexpected<Error> failure(std::string message)
@@ -409,6 +412,8 @@ private:
             return failure(edit.newName + " already exists");
         if (target->entry.kind == RpfEntryKind::Resource && (endsWith(target->entry.name, ".ysc") || endsWith(edit.newName, ".ysc")))
             return failure("scripts cannot be renamed: ARCHON cannot encrypt them");
+        if (auto ng = isNgArchive(*target); !ng || *ng)
+            return ng ? failure("encrypted archives inside archives cannot be renamed: the name is part of their key") : std::unexpected(ng.error());
         if (target->entry.kind == RpfEntryKind::Binary && target->entry.encrypted && !target->pending) {
             if (keys_ == nullptr)
                 return failure("entry is encrypted and no keys are loaded");
@@ -417,6 +422,24 @@ private:
         }
         target->entry.name = edit.newName;
         return {};
+    }
+
+    Result<bool> isNgArchive(const Node &node)
+    {
+        const RpfEntry &entry = node.entry;
+        if (node.pending || entry.kind != RpfEntryKind::Binary || entry.storedSize != 0 || entry.uncompressedSize < resourceHeaderSize || !endsWith(entry.name, ".rpf"))
+            return false;
+        const auto header = transaction_.readAt(file_, levels_.back().base + entry.offset, resourceHeaderSize);
+        if (!header)
+            return std::unexpected(header.error());
+        const auto word = [&header](std::size_t offset) {
+            std::uint32_t value = 0;
+            for (std::size_t i = 0; i < 4; ++i)
+                value |= std::to_integer<std::uint32_t>((*header)[offset + i]) << (8 * i);
+            return value;
+        };
+        const std::uint32_t tag = word(12);
+        return word(0) == archiveMagic && tag != 0 && tag != openTag && tag != aesTag;
     }
 
     Result<std::uint64_t> occupied(const Level &level, const Node &node)

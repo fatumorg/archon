@@ -52,6 +52,8 @@ private slots:
     void outsideChangeRefusesRollback();
     void pathOutsideRootIsRefused();
     void emptyTransactionLeavesNoHistory();
+    void interruptedRollbackCanBeResumed();
+    void newFileThenWriteAtRollsBackBoth();
 
 private:
     Result<Transaction> begin(const char *description = "test change")
@@ -295,6 +297,50 @@ void TestTransaction::emptyTransactionLeavesNoHistory()
     QVERIFY(transaction);
     QVERIFY(transaction->commit());
     QVERIFY(listTransactions(store_).empty());
+}
+
+void TestTransaction::interruptedRollbackCanBeResumed()
+{
+    const std::filesystem::path second = root_ / "second.bin";
+    const auto secondOriginal = pattern(2048, 3);
+    writeFile(second, secondOriginal);
+    {
+        auto transaction = begin("Two files");
+        QVERIFY(transaction);
+        QVERIFY(transaction->writeAt(file_, 10, pattern(30, 7)));
+        QVERIFY(transaction->writeAt(second, 20, pattern(40, 8)));
+        QVERIFY(transaction->writeAt(second, 2048, pattern(500, 8)));
+        QVERIFY(transaction->commit());
+    }
+    const auto id = listTransactions(store_).front().id;
+    std::filesystem::permissions(file_, std::filesystem::perms::owner_write, std::filesystem::perm_options::remove);
+    QVERIFY(!rollbackTransaction(store_, id));
+    QCOMPARE(readFile(second), secondOriginal);
+    std::filesystem::permissions(file_, std::filesystem::perms::owner_write, std::filesystem::perm_options::add);
+
+    const auto history = listTransactions(store_);
+    QCOMPARE(history.size(), std::size_t(1));
+    QVERIFY(!history.front().committed);
+    const auto resumed = rollbackTransaction(store_, id);
+    QVERIFY2(resumed, resumed ? "" : resumed.error().message.c_str());
+    QCOMPARE(readFile(file_), original_);
+    QCOMPARE(readFile(second), secondOriginal);
+    QVERIFY(listTransactions(store_).empty());
+}
+
+void TestTransaction::newFileThenWriteAtRollsBackBoth()
+{
+    const std::filesystem::path created = root_ / "created.txt";
+    auto transaction = begin();
+    QVERIFY(transaction);
+    QVERIFY(transaction->replaceFile(created, [](const std::filesystem::path &temporary) -> Result<void> {
+        writeFile(temporary, "new file");
+        return {};
+    }));
+    QVERIFY(transaction->writeAt(file_, 0, pattern(64, 4)));
+    QVERIFY(transaction->rollback());
+    QVERIFY(!std::filesystem::exists(created));
+    QCOMPARE(readFile(file_), original_);
 }
 
 QTEST_APPLESS_MAIN(TestTransaction)

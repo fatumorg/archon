@@ -1,5 +1,6 @@
 #include "app/busy.h"
 
+#include <QCloseEvent>
 #include <QEventLoop>
 #include <QProgressDialog>
 #include <QThread>
@@ -10,12 +11,39 @@ namespace archon {
 
 namespace {
 
+class BusyDialog : public QProgressDialog {
+public:
+    BusyDialog(const QString &label, bool cancellable, QWidget *parent)
+        : QProgressDialog(label, QObject::tr("Cancel"), 0, 0, parent)
+        , cancellable_(cancellable)
+    {
+        if (!cancellable_)
+            setCancelButton(nullptr);
+    }
+
+    void reject() override
+    {
+        if (cancellable_)
+            QProgressDialog::reject();
+    }
+
+protected:
+    void closeEvent(QCloseEvent *event) override
+    {
+        if (cancellable_)
+            QProgressDialog::closeEvent(event);
+        else
+            event->ignore();
+    }
+
+private:
+    const bool cancellable_;
+};
+
 bool run(QWidget *parent, const QString &label, bool cancellable, const std::function<void(const std::atomic<bool> &cancel)> &work)
 {
     std::atomic<bool> cancel { false };
-    QProgressDialog dialog(label, QObject::tr("Cancel"), 0, 0, parent);
-    if (!cancellable)
-        dialog.setCancelButton(nullptr);
+    BusyDialog dialog(label, cancellable, parent);
     dialog.setWindowTitle(QStringLiteral("ARCHON"));
     dialog.setWindowModality(Qt::ApplicationModal);
     dialog.setAutoClose(false);

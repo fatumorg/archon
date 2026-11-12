@@ -14,6 +14,7 @@ namespace archon {
 class WritableFile {
 public:
     static Result<WritableFile> open(const std::filesystem::path &file, bool create);
+    static Result<void> syncDirectory(const std::filesystem::path &directory);
 
     WritableFile(WritableFile &&) noexcept;
     WritableFile &operator=(WritableFile &&) noexcept;

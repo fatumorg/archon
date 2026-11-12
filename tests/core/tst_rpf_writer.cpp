@@ -186,6 +186,7 @@ private slots:
     void aesArchiveWithScriptsIsRefused();
     void editsCopiesOfRealArchives();
     void rebuildDropsDeadSpace();
+    void renamingNgNestedArchiveIsRefused();
     void rebuildRollbackRestoresOriginal();
     void rebuildDecryptsAesArchive();
     void rebuildRefusesAesScripts();
@@ -598,6 +599,25 @@ void TestRpfWriter::editsCopiesOfRealArchives()
         QCOMPARE(fileDigest(file), originalDigest);
         std::filesystem::remove(file);
     }
+}
+
+void TestRpfWriter::renamingNgNestedArchiveIsRefused()
+{
+    RpfBuilder inner;
+    inner.addBinary("deep/c.txt", toVector("deep content"), false);
+    auto innerBytes = inner.build();
+    setWord(innerBytes, 12, 0x0FEFFFFF);
+    RpfBuilder parent;
+    parent.addBinary("inner.rpf", innerBytes, false);
+    parent.addBinary("open.rpf", inner.build(), false);
+    writeFile(file_, parent.build());
+    const auto original = readFile(file_);
+
+    const auto refused = apply({ { Edit::Kind::Rename, "inner.rpf", {}, "renamed.rpf" } });
+    QVERIFY(!refused);
+    QVERIFY(refused.error().message.find("encrypted") != std::string::npos);
+    QCOMPARE(readFile(file_), original);
+    QVERIFY(apply({ { Edit::Kind::Rename, "open.rpf", {}, "renamed.rpf" } }));
 }
 
 void TestRpfWriter::rebuildDropsDeadSpace()

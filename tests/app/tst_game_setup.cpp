@@ -18,6 +18,7 @@ private slots:
     void checkMagicRejectsWrongBytes();
     void checkMagicAcceptsPinnedFile();
     void savedInstallIsReused();
+    void storeLockAllowsOneSession();
 
 private:
     QTemporaryDir home_;
@@ -57,6 +58,17 @@ void TestGameSetup::savedInstallIsReused()
     QVERIFY(install.has_value());
     QCOMPARE(install->root, root);
     QCOMPARE(install->edition, GameEdition::Legacy);
+}
+
+void TestGameSetup::storeLockAllowsOneSession()
+{
+    QTemporaryDir directory;
+    const std::filesystem::path store = std::filesystem::path(directory.path().toStdString()) / "safety" / "abc";
+    auto first = lockStore(store);
+    QVERIFY(first != nullptr);
+    QVERIFY(lockStore(store) == nullptr);
+    first.reset();
+    QVERIFY(lockStore(store) != nullptr);
 }
 
 QTEST_MAIN(TestGameSetup)

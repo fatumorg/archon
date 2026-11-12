@@ -5,6 +5,7 @@
 #ifdef Q_OS_WIN
 #include <io.h>
 #else
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -74,6 +75,23 @@ Result<void> WritableFile::sync()
     if (!synced)
         return failure(0, "flush");
     return {};
+}
+
+Result<void> WritableFile::syncDirectory(const std::filesystem::path &directory)
+{
+#ifdef Q_OS_WIN
+    static_cast<void>(directory);
+    return {};
+#else
+    const int descriptor = ::open(directory.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (descriptor < 0)
+        return std::unexpected(Error { "file", 0, "cannot open " + directory.string() });
+    const bool synced = fsync(descriptor) == 0;
+    close(descriptor);
+    if (!synced)
+        return std::unexpected(Error { "file", 0, "cannot flush " + directory.string() });
+    return {};
+#endif
 }
 
 }
