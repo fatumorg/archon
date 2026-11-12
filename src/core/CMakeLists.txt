@@ -1,4 +1,5 @@
 add_library(archon-core STATIC
+    asi/asi_manager.cpp
     crypto/aes.cpp
     crypto/dotnet_random.cpp
     crypto/hash.cpp
