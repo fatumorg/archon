@@ -16,6 +16,10 @@ Editing an archive outside the `mods` folder first offers to copy it there, so t
 
 Every change is written through a journal and backed up before any byte is overwritten. Tools > Change history lists the changes and rolls any of them back, together with every newer one. If ARCHON stops in the middle of a change, it offers to roll it back on the next start. A rollback is refused when the file was changed by something else afterwards, for example by Steam verifying the game.
 
+## Package Creator
+
+Tools > Package Creator writes an OIV 2.2 package. The Package tab holds the name, version, author, descriptions, licence, header colours and icon; the Content tab lists files to add, each with its target folder in the game (archives included, for example `x64e.rpf/levels/gta5/vehicles.rpf`), and game files to delete. Packages it writes install with the Package Installer, in ARCHON and in OpenIV.
+
 ## Textures
 
 Opening a `.ytd` file shows its textures with a preview. Export saves the selected texture or all of them as DDS or PNG. In edit mode the dictionary can be changed: replace or add textures from DDS files (kept in their own format and mipmaps) or from PNG, JPEG, BMP and TGA images (stored as A8R8G8B8 with generated mipmaps), rename and remove textures, then Save. Saving inside an archive outside `mods` asks first, like every other archive edit. ARCHON has no block-compression encoder, so an imported image is stored uncompressed.

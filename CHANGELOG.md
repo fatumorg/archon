@@ -11,6 +11,7 @@
 - Copy archives to the `mods` folder before editing them.
 - Rebuild archives to reclaim unused space.
 - Every change is journaled and backed up; Tools > Change history rolls changes back, and an interrupted change is offered for rollback on the next start.
+- Package Creator: writes OIV 2.2 packages from files added to the game folder or into archives (nested ones too) and files to delete, with name, version, author, descriptions, licence, colours and icon.
 - Texture dictionaries (.ytd): preview every texture, export as DDS or PNG, and in edit mode replace, add (DDS keeps its format; PNG, JPEG, BMP and TGA become A8R8G8B8 with generated mipmaps), rename and remove textures.
 - ASI Manager: install the ASI Loader (Ultimate ASI Loader) and the mods folder loader (RageOpenV) from pinned downloads; add, remove, enable and disable ASI plugins.
 - Package Installer: installs OIV packages (2.0, 2.1, 2.2 and 1.x packages made for GTA V) into the "mods" folder or the game folder as one change, with file, archive, text and XML commands; uninstall from Change history.
