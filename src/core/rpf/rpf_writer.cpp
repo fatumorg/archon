@@ -3,6 +3,7 @@
 #include "core/crypto/aes.h"
 #include "core/crypto/inflate.h"
 #include "core/crypto/ng.h"
+#include "core/io/writable_file.h"
 #include "core/io/ascii.h"
 #include "core/rpf/rpf_reader.h"
 #include "core/rpf/rpf_toc.h"
@@ -188,6 +189,20 @@ Result<std::vector<std::byte>> readSource(const std::filesystem::path &source)
 bool isResourceFile(std::span<const std::byte> content)
 {
     return content.size() >= resourceHeaderSize && std::ranges::equal(content.first(resourceMagic.size()), resourceMagic);
+}
+
+template <typename ReadHeader>
+Result<std::uint64_t> occupiedSize(const RpfEntry &entry, ReadHeader &&readHeader)
+{
+    if (entry.kind == RpfEntryKind::Binary)
+        return entry.storedSize != 0 ? entry.storedSize : entry.uncompressedSize;
+    if (entry.storedSize != rpfSizeInHeaderMarker)
+        return entry.storedSize;
+    const Result<std::vector<std::byte>> header = readHeader(resourceHeaderSize);
+    if (!header)
+        return std::unexpected(header.error());
+    const auto at = [&header](std::size_t index) { return std::to_integer<std::uint64_t>((*header)[index]); };
+    return (at(2) << 24) | (at(5) << 16) | (at(14) << 8) | at(7);
 }
 
 class Editor {
@@ -406,15 +421,7 @@ private:
 
     Result<std::uint64_t> occupied(const Level &level, const Node &node)
     {
-        if (node.entry.kind == RpfEntryKind::Binary)
-            return node.entry.storedSize != 0 ? node.entry.storedSize : node.entry.uncompressedSize;
-        if (node.entry.storedSize != rpfSizeInHeaderMarker)
-            return node.entry.storedSize;
-        const auto header = transaction_.readAt(file_, level.base + node.entry.offset, resourceHeaderSize);
-        if (!header)
-            return std::unexpected(header.error());
-        const auto at = [&header](std::size_t index) { return std::to_integer<std::uint64_t>((*header)[index]); };
-        return (at(2) << 24) | (at(5) << 16) | (at(14) << 8) | at(7);
+        return occupiedSize(node.entry, [&](std::size_t count) { return transaction_.readAt(file_, level.base + node.entry.offset, count); });
     }
 
     Result<void> store(const Level &level, Node &node)
@@ -569,11 +576,116 @@ private:
     std::vector<std::pair<std::string, std::filesystem::path>> written_;
 };
 
+class Rebuilder {
+public:
+    Rebuilder(std::shared_ptr<RandomAccessSource> source, WritableFile &out, const Keys *keys)
+        : source_(std::move(source))
+        , out_(out)
+        , keys_(keys)
+    {
+    }
+
+    Result<std::uint64_t> write(const RpfReader &reader, std::uint64_t sourceBase, std::uint64_t target, bool nested)
+    {
+        const RpfArchive &archive = reader.archive();
+        const bool aes = archive.encryption() == RpfEncryption::Aes;
+        if (aes && hasScripts(buildTree(archive.entries(), 0)))
+            return failure("scripts in an AES archive cannot be re-encrypted");
+        std::vector<RpfEntry> entries = archive.entries();
+        const auto sizing = serializeToc(entries);
+        if (!sizing)
+            return std::unexpected(sizing.error());
+        const std::uint64_t dataStart = aligned(sizing->size());
+        std::uint64_t cursor = target + dataStart;
+        for (std::uint32_t index = 0; index < entries.size(); ++index) {
+            RpfEntry &entry = entries[index];
+            if (entry.kind == RpfEntryKind::Directory)
+                continue;
+            const std::uint64_t from = sourceBase + entry.offset;
+            const auto size = occupiedSize(entry, [&](std::size_t count) { return source_->read(from, count); });
+            if (!size)
+                return std::unexpected(size.error());
+            if (*size == 0) {
+                entry.offset = dataStart;
+                continue;
+            }
+            entry.offset = cursor - target;
+            if (entry.kind == RpfEntryKind::Binary && entry.storedSize == 0 && !entry.encrypted && endsWith(entry.name, ".rpf")) {
+                if (const auto inner = reader.openNested(index)) {
+                    const auto written = write(*inner, from, cursor, true);
+                    if (!written)
+                        return written;
+                    entry.uncompressedSize = static_cast<std::uint32_t>(*written);
+                    cursor += *written;
+                    continue;
+                }
+            }
+            const bool decrypt = aes && entry.kind == RpfEntryKind::Binary && entry.encrypted;
+            if (auto copied = copy(from, cursor, *size, decrypt); !copied)
+                return std::unexpected(copied.error());
+            entry.encrypted = entry.encrypted && !decrypt;
+            cursor = aligned(cursor + *size);
+        }
+        const std::uint64_t total = cursor - target;
+        if (nested && total > maxNestedSize)
+            return failure("archive would exceed 4 GB");
+        const auto toc = serializeToc(entries);
+        if (!toc)
+            return std::unexpected(toc.error());
+        if (auto written = out_.write(target, *toc); !written)
+            return std::unexpected(written.error());
+        return total;
+    }
+
+private:
+    Result<void> copy(std::uint64_t from, std::uint64_t to, std::uint64_t size, bool decrypt)
+    {
+        for (std::uint64_t done = 0; done < size;) {
+            const std::size_t chunk = static_cast<std::size_t>(std::min<std::uint64_t>(copyChunk, size - done));
+            auto bytes = source_->read(from + done, chunk);
+            if (!bytes)
+                return std::unexpected(bytes.error());
+            if (decrypt) {
+                if (keys_ == nullptr)
+                    return failure("archive is encrypted and no keys are loaded");
+                bytes = aesEcbDecrypt(*bytes, keys_->aes);
+                if (!bytes)
+                    return std::unexpected(bytes.error());
+            }
+            if (auto written = out_.write(to + done, *bytes); !written)
+                return written;
+            done += chunk;
+        }
+        return {};
+    }
+
+    std::shared_ptr<RandomAccessSource> source_;
+    WritableFile &out_;
+    const Keys *keys_;
+};
+
 }
 
 Result<void> editArchive(Transaction &transaction, const std::filesystem::path &file, std::span<const std::string> nested, std::span<const ArchiveEdit> edits, const Keys *keys)
 {
     return Editor(transaction, file, keys).run(nested, edits);
+}
+
+Result<void> rebuildArchive(Transaction &transaction, const std::filesystem::path &file, const Keys *keys)
+{
+    return transaction.replaceFile(file, [&](const std::filesystem::path &temporary) -> Result<void> {
+        auto source = openFileSource(file);
+        const auto reader = RpfReader::open(source, file.filename().string(), keys);
+        if (!reader)
+            return std::unexpected(reader.error());
+        auto out = WritableFile::open(temporary, true);
+        if (!out)
+            return std::unexpected(out.error());
+        const auto total = Rebuilder(std::move(source), *out, keys).write(*reader, 0, 0, false);
+        if (!total)
+            return std::unexpected(total.error());
+        return out->resize(*total);
+    });
 }
 
 }

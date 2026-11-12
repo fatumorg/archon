@@ -185,6 +185,11 @@ private slots:
     void aesArchiveIsConverted();
     void aesArchiveWithScriptsIsRefused();
     void editsCopiesOfRealArchives();
+    void rebuildDropsDeadSpace();
+    void rebuildRollbackRestoresOriginal();
+    void rebuildDecryptsAesArchive();
+    void rebuildRefusesAesScripts();
+    void rebuildsCopyOfCommon();
 
 private:
     std::filesystem::path source(const std::string &name, std::span<const std::byte> content)
@@ -205,6 +210,16 @@ private:
         const auto edited = editArchive(*transaction, file_, nested, edits, keys);
         if (!edited)
             return edited;
+        return transaction->commit();
+    }
+    Result<void> rebuild(const Keys *keys = nullptr)
+    {
+        auto transaction = Transaction::begin(store_, root_, "rebuild");
+        if (!transaction)
+            return std::unexpected(transaction.error());
+        const auto rebuilt = rebuildArchive(*transaction, file_, keys);
+        if (!rebuilt)
+            return rebuilt;
         return transaction->commit();
     }
 
@@ -583,6 +598,122 @@ void TestRpfWriter::editsCopiesOfRealArchives()
         QCOMPARE(fileDigest(file), originalDigest);
         std::filesystem::remove(file);
     }
+}
+
+void TestRpfWriter::rebuildDropsDeadSpace()
+{
+    const auto big = source("big.awc", text(1 << 20, 3));
+    QVERIFY(apply({ put("big.awc", big) }));
+    QVERIFY(apply({ put("big.awc", big) }, { "inner.rpf" }));
+    QVERIFY(apply({ { Edit::Kind::Remove, "big.awc", {}, {} } }));
+    QVERIFY(apply({ { Edit::Kind::Remove, "big.awc", {}, {} } }, { "inner.rpf" }));
+    const auto editedSize = std::filesystem::file_size(file_);
+    std::map<std::string, std::array<std::byte, 32>> before;
+    std::set<std::string> treeBefore;
+    {
+        const RpfReader reader = openReader(file_);
+        hashEntries(reader, "", before);
+        treeBefore = treeOf(reader);
+    }
+
+    const auto rebuilt = rebuild();
+    QVERIFY2(rebuilt, rebuilt ? "" : rebuilt.error().message.c_str());
+
+    QVERIFY(std::filesystem::file_size(file_) < editedSize);
+    QCOMPARE(std::filesystem::file_size(file_) % 512, std::uintmax_t(0));
+    const RpfReader reader = openReader(file_);
+    QCOMPARE(reader.archive().encryption(), RpfEncryption::Open);
+    QVERIFY(childrenAreSorted(reader.archive()));
+    QCOMPARE(treeOf(reader), treeBefore);
+    std::map<std::string, std::array<std::byte, 32>> after;
+    hashEntries(reader, "", after);
+    QCOMPARE(after, before);
+    QVERIFY(after.contains("inner.rpf/deep/c.txt"));
+    QCOMPARE(contentOf(reader, "data/b.bin"), std::vector<std::byte>(5000, std::byte { 'z' }));
+    QVERIFY(!std::filesystem::exists(file_.string() + ".archon-tmp"));
+}
+
+void TestRpfWriter::rebuildRollbackRestoresOriginal()
+{
+    QVERIFY(apply({ put("gone.txt", source("gone.txt", text(90000, 2))) }));
+    QVERIFY(apply({ { Edit::Kind::Remove, "gone.txt", {}, {} } }));
+    const auto original = readFile(file_);
+    auto transaction = Transaction::begin(store_, root_, "rebuild");
+    QVERIFY(transaction);
+    const auto rebuilt = rebuildArchive(*transaction, file_, nullptr);
+    QVERIFY2(rebuilt, rebuilt ? "" : rebuilt.error().message.c_str());
+    QVERIFY(readFile(file_) != original);
+    QVERIFY(transaction->rollback());
+    QCOMPARE(sha256(readFile(file_)), sha256(original));
+}
+
+void TestRpfWriter::rebuildDecryptsAesArchive()
+{
+    Keys keys {};
+    for (std::size_t i = 0; i < keys.aes.size(); ++i)
+        keys.aes[i] = static_cast<std::byte>(i * 5 + 2);
+    writeFile(file_, asAesArchive(commonArchive(), keys, "b.bin"));
+    const auto rebuilt = rebuild(&keys);
+    QVERIFY2(rebuilt, rebuilt ? "" : rebuilt.error().message.c_str());
+    const RpfReader reader = openReader(file_, &keys);
+    QCOMPARE(reader.archive().encryption(), RpfEncryption::Open);
+    QVERIFY(!reader.archive().entries()[*reader.archive().find("data/b.bin")].encrypted);
+    QCOMPARE(contentOf(reader, "data/b.bin"), std::vector<std::byte>(5000, std::byte { 'z' }));
+    QCOMPARE(toText(contentOf(reader, "data/a.txt")), std::string("hello"));
+    const auto nested = reader.openNested(*reader.archive().find("inner.rpf"));
+    QVERIFY2(nested, nested ? "" : nested.error().message.c_str());
+    QCOMPARE(toText(contentOf(*nested, "deep/c.txt")), std::string("deep content"));
+}
+
+void TestRpfWriter::rebuildRefusesAesScripts()
+{
+    Keys keys {};
+    RpfBuilder builder;
+    builder.addBinary("a.txt", toVector("hello"), false);
+    builder.addResource("main.ysc", std::vector<std::byte>(0x400, std::byte { 7 }), 0x08000000, 0x08000000);
+    const auto archive = asAesArchive(builder.build(), keys, "");
+    writeFile(file_, archive);
+    const auto rebuilt = rebuild(&keys);
+    QVERIFY(!rebuilt);
+    QVERIFY(rebuilt.error().message.find("scripts in an AES archive") != std::string::npos);
+    QCOMPARE(readFile(file_), archive);
+    QVERIFY(listTransactions(store_).empty());
+}
+
+void TestRpfWriter::rebuildsCopyOfCommon()
+{
+    ARCHON_REQUIRE_REAL();
+    const Keys *keys = realKeys();
+    QVERIFY(keys);
+    std::filesystem::create_directories(scratchDirectory());
+    QTemporaryDir scratch(QString::fromStdString((scratchDirectory() / "rebuild-XXXXXX").string()));
+    QVERIFY(scratch.isValid());
+    const std::filesystem::path root = pathOf(scratch) / "game";
+    const std::filesystem::path store = pathOf(scratch) / "store";
+    const std::filesystem::path file = root / "common.rpf";
+    std::filesystem::create_directories(root);
+    std::filesystem::copy_file(*realGameDir() / "common.rpf", file);
+
+    std::map<std::string, std::array<std::byte, 32>> before;
+    hashEntries(RpfReader::open(openFileSource(file), "common.rpf", keys).value(), "", before);
+    const QByteArray originalDigest = fileDigest(file);
+
+    auto transaction = Transaction::begin(store, root, "rebuild");
+    QVERIFY(transaction);
+    const auto rebuilt = rebuildArchive(*transaction, file, keys);
+    QVERIFY2(rebuilt, rebuilt ? "" : rebuilt.error().message.c_str());
+    {
+        const auto reader = RpfReader::open(openFileSource(file), "common.rpf", keys);
+        QVERIFY2(reader, reader ? "" : reader.error().message.c_str());
+        QCOMPARE(reader->archive().encryption(), RpfEncryption::Open);
+        std::map<std::string, std::array<std::byte, 32>> after;
+        hashEntries(*reader, "", after);
+        QCOMPARE(after.size(), before.size());
+        QVERIFY(after == before);
+        qInfo("common.rpf: %zu entries unchanged after rebuild", before.size());
+    }
+    QVERIFY(transaction->rollback());
+    QCOMPARE(fileDigest(file), originalDigest);
 }
 
 QTEST_APPLESS_MAIN(TestRpfWriter)
