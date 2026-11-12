@@ -1,5 +1,6 @@
 #include "app/prefix_setup_dialog.h"
 
+#include <QCloseEvent>
 #include <QDateTime>
 #include <QDialogButtonBox>
 #include <QFile>
@@ -12,6 +13,9 @@
 #include <QStandardPaths>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include <algorithm>
+#include <array>
 
 namespace archon {
 
@@ -130,6 +134,12 @@ void PrefixSetupDialog::runNext()
         finish(missing.isEmpty(), missing.isEmpty() ? tr("All components are present.") : tr("Not installed: %1").arg(missing.join(QStringLiteral(", "))));
         return;
     }
+    if (isGameRunning(proc_)) {
+        pending_.clear();
+        showStatus();
+        finish(false, tr("Close the game before setting up its prefix."));
+        return;
+    }
     const QStringList arguments = pending_.back();
     pending_.pop_back();
     const QString shown = QStringLiteral("protontricks ") + arguments.join(QLatin1Char(' '));
@@ -137,14 +147,15 @@ void PrefixSetupDialog::runNext()
     output_->appendPlainText(QString());
     process_ = new QProcess(this);
     process_->setProcessChannelMode(QProcess::MergedChannels);
-    connect(process_, &QProcess::readyRead, this, [this] {
-        const QString text = QString::fromLocal8Bit(process_->readAll());
+    QProcess *process = process_;
+    connect(process, &QProcess::readyRead, this, [this, process] {
+        const QString text = QString::fromLocal8Bit(process->readAll());
         output_->moveCursor(QTextCursor::End);
         output_->insertPlainText(text);
         output_->moveCursor(QTextCursor::End);
     });
-    connect(process_, &QProcess::finished, this, [this, shown](int code, QProcess::ExitStatus exitStatus) {
-        process_->deleteLater();
+    connect(process, &QProcess::finished, this, [this, process, shown](int code, QProcess::ExitStatus exitStatus) {
+        process->deleteLater();
         process_ = nullptr;
         const int result = exitStatus == QProcess::NormalExit ? code : -1;
         recordLines_.append(shown + QStringLiteral(" -> exit code %1").arg(result));
@@ -153,16 +164,16 @@ void PrefixSetupDialog::runNext()
         showStatus();
         runNext();
     });
-    connect(process_, &QProcess::errorOccurred, this, [this, shown](QProcess::ProcessError error) {
+    connect(process, &QProcess::errorOccurred, this, [this, process, shown](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart)
             return;
-        process_->deleteLater();
+        process->deleteLater();
         process_ = nullptr;
         recordLines_.append(shown + QStringLiteral(" -> could not start"));
         pending_.clear();
         finish(false, tr("protontricks could not be started."));
     });
-    process_->start(program_, arguments);
+    process->start(program_, arguments);
 }
 
 void PrefixSetupDialog::finish(bool complete, const QString &message)
@@ -180,6 +191,21 @@ void PrefixSetupDialog::finish(bool complete, const QString &message)
     close_->setEnabled(true);
     showStatus();
     emit setupFinished(complete);
+}
+
+void PrefixSetupDialog::reject()
+{
+    if (process_ == nullptr)
+        QDialog::reject();
+}
+
+void PrefixSetupDialog::closeEvent(QCloseEvent *event)
+{
+    if (process_ != nullptr) {
+        event->ignore();
+        return;
+    }
+    QDialog::closeEvent(event);
 }
 
 }

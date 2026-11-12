@@ -21,8 +21,13 @@ public:
 
     void start();
 
+    void reject() override;
+
 signals:
     void setupFinished(bool complete);
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     void showStatus();

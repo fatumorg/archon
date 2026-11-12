@@ -41,6 +41,7 @@ private slots:
     void disableRenamesAndEnableRestores();
     void addPluginRefusesNonAsi();
     void everyActionIsOneHistoryEntry();
+    void symlinkedPluginFolderIsIgnored();
 
 private:
     AsiManager manager(GameEdition edition = GameEdition::Legacy) const
@@ -219,6 +220,16 @@ void TestAsiManager::everyActionIsOneHistoryEntry()
     QVERIFY(rollbackTransaction(store_, history.back().id));
     QVERIFY(!std::filesystem::exists(root_ / "dinput8.dll"));
     QVERIFY(!std::filesystem::exists(root_ / "mods"));
+}
+
+void TestAsiManager::symlinkedPluginFolderIsIgnored()
+{
+    const std::filesystem::path outside = pathOf(*directory_) / "outside";
+    writeFile(outside / "victim.asi", "x");
+    std::filesystem::create_directory_symlink(outside, root_ / "scripts");
+    QVERIFY(manager().state().plugins.empty());
+    QVERIFY(!manager().removePlugin("scripts/victim.asi"));
+    QVERIFY(std::filesystem::exists(outside / "victim.asi"));
 }
 
 QTEST_APPLESS_MAIN(TestAsiManager)

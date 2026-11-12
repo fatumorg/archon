@@ -89,7 +89,7 @@ AsiManagerDialog::AsiManagerDialog(std::filesystem::path root, GameEdition editi
     loaderButton_->setMinimumWidth(buttonWidth);
     modsLoaderButton_->setMinimumWidth(buttonWidth);
     connect(loaderButton_, &QPushButton::clicked, this, [this] {
-        if (!state_.loaderInstalled) {
+        if (!state_.loaderPinned) {
             install(asiLoaderDownload());
             return;
         }
@@ -176,7 +176,7 @@ void AsiManagerDialog::refresh()
     const QString currentBase = current.endsWith(QLatin1StringView(".disabled")) ? current.chopped(9) : current;
     state_ = AsiManager(root_, edition_, store_).state();
     loaderStatus_->setText(!state_.loaderInstalled ? tr("Not installed") : state_.loaderPinned ? tr("Installed (Ultimate ASI Loader v10.0.2)") : tr("Installed (other version)"));
-    loaderButton_->setText(state_.loaderInstalled ? tr("Uninstall") : tr("Install"));
+    loaderButton_->setText(state_.loaderPinned ? tr("Uninstall") : tr("Install"));
     modsLoaderStatus_->setText(state_.modsLoader.empty() ? tr("Not installed") : tr("Installed (%1)").arg(QString::fromStdString(state_.modsLoader)));
     modsLoaderButton_->setText(state_.modsLoader.empty() ? tr("Install") : tr("Uninstall"));
     plugins_->clear();

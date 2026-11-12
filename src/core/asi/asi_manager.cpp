@@ -179,7 +179,8 @@ AsiState AsiManager::state() const
     std::error_code error;
     for (std::filesystem::directory_iterator it(root_, error), end; !error && it != end; it.increment(error)) {
         const std::string name = it->path().filename().string();
-        if (it->is_directory(error) && std::ranges::any_of(pluginFolders, [&name](std::string_view folder) { return asciiEqualIgnoreCase(folder, name); }))
+        std::error_code statusError;
+        if (std::filesystem::is_directory(std::filesystem::symlink_status(it->path(), statusError)) && std::ranges::any_of(pluginFolders, [&name](std::string_view folder) { return asciiEqualIgnoreCase(folder, name); }))
             folders.emplace_back(it->path(), name + '/');
     }
     for (const auto &[folder, prefix] : folders) {
@@ -192,7 +193,8 @@ AsiState AsiManager::state() const
                     state.modsLoader = name;
                 continue;
             }
-            state.plugins.push_back({ prefix + name, !asciiLower(name).ends_with(disabledSuffix), std::filesystem::file_size(it->path(), error) });
+            std::error_code sizeError;
+            state.plugins.push_back({ prefix + name, !asciiLower(name).ends_with(disabledSuffix), std::filesystem::file_size(it->path(), sizeError) });
         }
     }
     std::ranges::sort(state.plugins, [](const AsiPlugin &left, const AsiPlugin &right) { return asciiLower(left.path) < asciiLower(right.path); });

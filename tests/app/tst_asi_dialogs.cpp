@@ -35,6 +35,8 @@ QTreeWidgetItem *row(QTreeWidget *list, const QString &name)
 
 const char *const fakeProtontricks = R"(#!/bin/sh
 echo "fake protontricks $*"
+if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
+if [ -n "$FAKE_START_GAME" ]; then mkdir -p "$FAKE_START_GAME/555"; printf 'Z:\\GTA5.exe\0' > "$FAKE_START_GAME/555/cmdline"; fi
 echo "$*" >> "$FAKE_LOG"
 p="$FAKE_PREFIX"
 if [ "$1" = "-c" ]; then
@@ -70,6 +72,9 @@ private slots:
     void prefixSetupRefusesWhileGameRuns();
     void prefixSetupReportsMissingProtontricks();
     void layoutsHoldTheirContent();
+    void prefixDialogStaysOpenWhileRunning();
+    void prefixSetupStopsWhenGameStarts();
+    void otherLoaderOffersInstall();
 
 private:
     std::unique_ptr<AsiManagerDialog> dialog()
@@ -132,6 +137,8 @@ void TestAsiDialogs::init()
     qputenv("FAKE_PREFIX", QByteArray::fromStdString(prefix_.string()));
     qputenv("FAKE_LOG", QByteArray::fromStdString((pathOf(*directory_) / "calls.log").string()));
     qunsetenv("FAKE_FAIL_VERB");
+    qunsetenv("FAKE_SLEEP");
+    qunsetenv("FAKE_START_GAME");
 }
 
 void TestAsiDialogs::cleanup()
@@ -172,14 +179,16 @@ void TestAsiDialogs::installsPinnedDownloads()
 
 void TestAsiDialogs::uninstallsLoader()
 {
-    writeFile(root_ / "dinput8.dll", "other loader");
+    writeFile(root_ / "OpenIV.asi", "openiv");
     auto shown = dialog();
-    QCOMPARE(shown->findChild<QLabel *>(QStringLiteral("loaderStatus"))->text(), QStringLiteral("Installed (other version)"));
+    QCOMPARE(shown->findChild<QLabel *>(QStringLiteral("modsLoaderStatus"))->text(), QStringLiteral("Installed (OpenIV.asi)"));
+    auto *button = shown->findChild<QPushButton *>(QStringLiteral("modsLoaderButton"));
+    QCOMPARE(button->text(), QStringLiteral("Uninstall"));
     ModalDriver driver({ QStringLiteral("Yes") });
-    shown->findChild<QPushButton *>(QStringLiteral("loaderButton"))->click();
+    button->click();
     QVERIFY(driver.done());
-    QVERIFY(!std::filesystem::exists(root_ / "dinput8.dll"));
-    QCOMPARE(shown->findChild<QLabel *>(QStringLiteral("loaderStatus"))->text(), QStringLiteral("Not installed"));
+    QVERIFY(!std::filesystem::exists(root_ / "OpenIV.asi"));
+    QCOMPARE(shown->findChild<QLabel *>(QStringLiteral("modsLoaderStatus"))->text(), QStringLiteral("Not installed"));
 }
 
 void TestAsiDialogs::pluginButtonsWork()
@@ -298,6 +307,40 @@ void TestAsiDialogs::layoutsHoldTheirContent()
     QVERIFY(QTest::qWaitForWindowExposed(prefix.get()));
     auto *components = prefix->findChild<QTreeWidget *>(QStringLiteral("componentList"));
     QCOMPARE(components->verticalScrollBar()->maximum(), 0);
+}
+
+void TestAsiDialogs::prefixDialogStaysOpenWhileRunning()
+{
+    qputenv("FAKE_SLEEP", "1");
+    auto shown = prefixDialog();
+    QSignalSpy finished(shown.get(), &PrefixSetupDialog::setupFinished);
+    shown->start();
+    QTest::qWait(200);
+    shown->reject();
+    shown->close();
+    QTest::keyClick(shown.get(), Qt::Key_Escape);
+    QVERIFY(shown->isVisible());
+    QVERIFY(finished.wait(30000));
+    QVERIFY(fileBytes(store_ / "prefix-271590.log").contains("exit code 0"));
+    shown->close();
+    QVERIFY(!shown->isVisible());
+}
+
+void TestAsiDialogs::prefixSetupStopsWhenGameStarts()
+{
+    qputenv("FAKE_START_GAME", QByteArray::fromStdString(proc_.string()));
+    auto shown = prefixDialog();
+    QVERIFY(!runSetup(*shown));
+    QCOMPARE(fileBytes(pathOf(*directory_) / "calls.log").count('\n'), 1);
+    QVERIFY(output(*shown).contains(QStringLiteral("Close the game before setting up its prefix.")));
+}
+
+void TestAsiDialogs::otherLoaderOffersInstall()
+{
+    writeFile(root_ / "dinput8.dll", "scripthook loader");
+    auto shown = dialog();
+    QCOMPARE(shown->findChild<QLabel *>(QStringLiteral("loaderStatus"))->text(), QStringLiteral("Installed (other version)"));
+    QCOMPARE(shown->findChild<QPushButton *>(QStringLiteral("loaderButton"))->text(), QStringLiteral("Install"));
 }
 
 QTEST_MAIN(TestAsiDialogs)
