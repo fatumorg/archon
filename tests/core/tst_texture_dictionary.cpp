@@ -31,6 +31,7 @@ private slots:
     void enhancedWriteThenReadIsIdentity();
     void unknownVersionIsRefused();
     void enhancedOnlyFormatsRoundTrip();
+    void enhancedHeaderFieldsSurviveRoundTrip();
 };
 
 namespace {
@@ -296,12 +297,13 @@ void TestTextureDictionary::realDictionariesRoundTrip()
     ARCHON_REQUIRE_REAL();
     const Keys *keys = realKeys();
     QVERIFY(keys);
-    const auto outer = RpfReader::open(openFileSource(*realGameDir() / "x64g.rpf"), "x64g.rpf", keys);
-    QVERIFY(outer);
-    const auto reader = outer->openNested(*outer->archive().find("levels/gta5/generic/cutsobjects.rpf"));
-    QVERIFY2(reader, reader ? "" : reader.error().message.c_str());
     std::size_t checked = 0;
     std::size_t textures = 0;
+    for (const auto &[top, nested] : { std::pair { "x64g.rpf", "levels/gta5/generic/cutsobjects.rpf" }, std::pair { "x64e.rpf", "levels/gta5/vehicles.rpf" } }) {
+    const auto outer = RpfReader::open(openFileSource(*realGameDir() / top), top, keys);
+    QVERIFY(outer);
+    const auto reader = outer->openNested(*outer->archive().find(nested));
+    QVERIFY2(reader, reader ? "" : reader.error().message.c_str());
     const auto &entries = reader->archive().entries();
     for (std::uint32_t index = 0; index < entries.size(); ++index) {
         if (entries[index].kind != RpfEntryKind::Resource || !asciiLower(entries[index].name).ends_with(".ytd"))
@@ -321,12 +323,15 @@ void TestTextureDictionary::realDictionariesRoundTrip()
             QVERIFY(found != again->end());
             QVERIFY(found->data == expected.data);
             QCOMPARE(found->usage, expected.usage);
+            QCOMPARE(found->enhancedFlags, expected.enhancedFlags);
+            QCOMPARE(found->enhancedMipFlags, expected.enhancedMipFlags);
         }
         textures += read->size();
         ++checked;
     }
+    }
     QVERIFY(checked > 50);
-    qInfo("cutsobjects.rpf: %zu dictionaries, %zu textures round-tripped", checked, textures);
+    qInfo("cutsobjects.rpf and vehicles.rpf: %zu dictionaries, %zu textures round-tripped", checked, textures);
 }
 
 void TestTextureDictionary::readsHandBuiltEnhancedDictionary()
@@ -363,6 +368,8 @@ void TestTextureDictionary::enhancedWriteThenReadIsIdentity()
         QCOMPARE(found->format, expected.format);
         QCOMPARE(found->levels, expected.levels);
         QCOMPARE(found->usage, 0x00800214u);
+        QCOMPARE(found->enhancedFlags, 0x00260208u);
+        QCOMPARE(found->enhancedMipFlags, std::uint8_t(0));
         QVERIFY(found->data == expected.data);
     }
 }
@@ -388,9 +395,36 @@ void TestTextureDictionary::enhancedOnlyFormatsRoundTrip()
         QCOMPARE(found->format, expected.format);
         QVERIFY(found->data == expected.data);
     }
-    const auto legacy = writeTextureDictionary(textures, 13);
-    QVERIFY(!legacy);
-    QCOMPARE(legacy.error().message, std::string("srgb uses texture format DXT5 sRGB, which a Legacy texture dictionary cannot hold."));
+    const auto refused = writeTextureDictionary(textures, 13);
+    QVERIFY(!refused);
+    QCOMPARE(refused.error().message, std::string("height uses texture format R16, which a Legacy texture dictionary cannot hold."));
+    const auto legacy = writeTextureDictionary(std::span(textures).first(2), 13);
+    QVERIFY2(legacy, legacy ? "" : legacy.error().message.c_str());
+    const auto legacyRead = reread(*legacy);
+    QVERIFY(legacyRead);
+    QCOMPARE(std::ranges::find(*legacyRead, std::string("srgb"), &Texture::name)->format, 0x35545844u);
+    QCOMPARE(std::ranges::find(*legacyRead, std::string("bc7s"), &Texture::name)->format, 0x20374342u);
+}
+
+void TestTextureDictionary::enhancedHeaderFieldsSurviveRoundTrip()
+{
+    auto pages = handBuiltEnhanced();
+    put(pages, 0x50, 0x00260228, 4);
+    put(pages, 0x60, 0x000200ff, 4);
+    put(pages, 0x80, 0x00280214, 4);
+    const auto read = readTextureDictionary(pages, 0x2000, 5);
+    QVERIFY(read);
+    QCOMPARE(read->front().enhancedFlags, 0x00260228u);
+    QCOMPARE(read->front().enhancedMipFlags, std::uint8_t(0));
+    QCOMPARE(read->front().usage, 0x00280214u);
+    const auto again = reread(*writeTextureDictionary(*read, 5));
+    QVERIFY(again);
+    QCOMPARE(again->front().enhancedFlags, 0x00260228u);
+    QCOMPARE(again->front().enhancedMipFlags, std::uint8_t(0));
+    QCOMPARE(again->front().usage, 0x00280214u);
+    const auto legacy = reread(*writeTextureDictionary(*read, 13));
+    QVERIFY(legacy);
+    QCOMPARE(legacy->front().usage, 0x20000014u);
 }
 
 QTEST_APPLESS_MAIN(TestTextureDictionary)

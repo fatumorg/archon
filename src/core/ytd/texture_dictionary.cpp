@@ -46,7 +46,7 @@ std::optional<std::uint32_t> dxgiFromFormat(std::uint32_t format)
 
 std::uint32_t usageFor(std::uint32_t usage, std::uint32_t version)
 {
-    const bool enhancedUsage = (usage & 0xFFFFFF00u) == 0x00800200u;
+    const bool enhancedUsage = (usage & 0xFF00FF00u) == 0x00000200u;
     if (version == enhancedDictionaryVersion)
         return enhancedUsage ? usage : 0x00800200u | (usage & 0xFFu);
     return enhancedUsage ? 0x20000000u | (usage & 0xFFu) : usage;
@@ -163,6 +163,10 @@ Result<std::vector<Texture>> readTextureDictionary(std::span<const std::byte> by
         Texture texture = enhanced
             ? Texture { *name, static_cast<std::uint32_t>(pages.value(t + 0x18, 2)), static_cast<std::uint32_t>(pages.value(t + 0x1A, 2)), static_cast<std::uint32_t>(pages.value(t + 0x22, 1)), formatFromDxgi(static_cast<std::uint32_t>(pages.value(t + 0x1F, 1))), static_cast<std::uint32_t>(pages.value(t + 0x40, 4)), {} }
             : Texture { *name, static_cast<std::uint32_t>(pages.value(t + 0x50, 2)), static_cast<std::uint32_t>(pages.value(t + 0x52, 2)), static_cast<std::uint32_t>(pages.value(t + 0x5D, 1)), static_cast<std::uint32_t>(pages.value(t + 0x58, 4)), static_cast<std::uint32_t>(pages.value(t + 0x40, 4)), {} };
+        if (enhanced) {
+            texture.enhancedFlags = static_cast<std::uint32_t>(pages.value(t + 0x10, 4));
+            texture.enhancedMipFlags = static_cast<std::uint8_t>(pages.value(t + 0x23, 1));
+        }
         if (texture.width == 0 || texture.height == 0 || texture.levels == 0 || texture.levels > maxLevels)
             return failure(texture.name + " has an invalid size or mip count", t);
         if (const auto size = mipChainSize(texture.format, texture.width, texture.height, texture.levels)) {
@@ -195,7 +199,7 @@ Result<std::vector<std::byte>> writeTextureDictionary(std::span<const Texture> i
             return failure(texture.name + " is larger than 65535 pixels or its row is too long to store");
         if (texture.levels == 0 || texture.levels > static_cast<std::uint32_t>(std::bit_width(std::max(texture.width, texture.height))))
             return failure(texture.name + " has more mip levels than its size allows");
-        if (!enhanced && (texture.format & 0x80000000u) != 0)
+        if (!enhanced && (withoutSrgb(texture.format) & 0x80000000u) != 0)
             return failure(texture.name + " uses texture format " + std::string(textureFormat(texture.format)->name) + ", which a Legacy texture dictionary cannot hold.");
         if (enhanced && !dxgiFromFormat(texture.format))
             return failure(texture.name + " uses texture format " + std::to_string(texture.format) + ", which ARCHON cannot rewrite.");
@@ -252,7 +256,7 @@ Result<std::vector<std::byte>> writeTextureDictionary(std::span<const Texture> i
             put(system, t + 0x04, 1, 4);
             put(system, t + 0x08, texture.data.size() / element, 4);
             put(system, t + 0x0C, element, 4);
-            put(system, t + 0x10, 0x00260208, 4);
+            put(system, t + 0x10, texture.enhancedFlags, 4);
             put(system, t + 0x18, texture.width, 2);
             put(system, t + 0x1A, texture.height, 2);
             put(system, t + 0x1C, 1, 2);
@@ -260,7 +264,7 @@ Result<std::vector<std::byte>> writeTextureDictionary(std::span<const Texture> i
             put(system, t + 0x1F, *dxgiFromFormat(texture.format), 1);
             put(system, t + 0x20, 0xFF, 1);
             put(system, t + 0x22, texture.levels, 1);
-            put(system, t + 0x23, 0x28, 1);
+            put(system, t + 0x23, texture.enhancedMipFlags, 1);
             put(system, t + 0x24, 0x00010000, 4);
             put(system, t + 0x28, systemBase + nameAt[index], 8);
             put(system, t + 0x30, systemBase + view, 8);
@@ -283,7 +287,7 @@ Result<std::vector<std::byte>> writeTextureDictionary(std::span<const Texture> i
         put(system, t + 0x52, texture.height, 2);
         put(system, t + 0x54, 1, 2);
         put(system, t + 0x56, textureStride(texture.format, texture.width), 2);
-        put(system, t + 0x58, texture.format, 4);
+        put(system, t + 0x58, withoutSrgb(texture.format), 4);
         put(system, t + 0x5D, texture.levels, 1);
         put(system, t + 0x70, graphicsBase + dataAt[index], 8);
     }

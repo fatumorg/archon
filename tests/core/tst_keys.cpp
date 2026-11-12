@@ -2,6 +2,7 @@
 #include "core/crypto/hash.h"
 #include "core/crypto/key_digests.h"
 #include "core/crypto/keys.h"
+#include "core/game/game_install.h"
 #include "support/real_install.h"
 #include "support/test_bytes.h"
 
@@ -97,7 +98,7 @@ void TestKeys::derivesKeysFromRealGame()
     ARCHON_REQUIRE_REAL();
     QTemporaryDir directory;
     const std::filesystem::path cache = std::filesystem::path(directory.path().toStdString()) / "keys.bin";
-    const auto loaded = loadKeys(*realGameDir() / "GTA5.exe", *realMagicDat(), cache);
+    const auto loaded = loadKeys(openGameInstall(*realGameDir())->executable, *realMagicDat(), cache);
     QVERIFY2(loaded, loaded ? "" : loaded.error().message.c_str());
     const auto keys = std::make_unique<Keys>(*loaded);
     QCOMPARE(sha1(keys->aes), aesKeyDigest);
@@ -121,7 +122,7 @@ void TestKeys::wrongMagicLeavesNoCache()
     QVERIFY(!magic.empty());
     magic[0] ^= std::byte { 0xFF };
     std::ofstream(root / "magic.dat", std::ios::binary).write(reinterpret_cast<const char *>(magic.data()), static_cast<std::streamsize>(magic.size()));
-    const auto loaded = loadKeys(*realGameDir() / "GTA5.exe", root / "magic.dat", root / "keys.bin");
+    const auto loaded = loadKeys(openGameInstall(*realGameDir())->executable, root / "magic.dat", root / "keys.bin");
     QVERIFY(!loaded);
     QCOMPARE(loaded.error().message, std::string("key material does not match expected digests"));
     QVERIFY(!std::filesystem::exists(root / "keys.bin"));

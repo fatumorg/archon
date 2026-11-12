@@ -36,7 +36,19 @@ private slots:
     void listsArchivesSkippingMods();
     void readsDlcListFromSyntheticInstall();
     void realInstall();
+    void comparesFoldersWithoutThrowing();
 };
+
+void TestGameInstall::comparesFoldersWithoutThrowing()
+{
+    QTemporaryDir directory;
+    const auto root = pathOf(directory);
+    std::filesystem::create_directories(root / "game");
+    std::filesystem::create_symlink(root / "game", root / "link");
+    QVERIFY(isSameFolder(root / "game", root / "link"));
+    QVERIFY(!isSameFolder(root / "game", root / "gone"));
+    QVERIFY(!isSameFolder(root / "gone", root / "game"));
+}
 
 void TestGameInstall::detectsEdition()
 {
@@ -138,7 +150,7 @@ void TestGameInstall::realInstall()
     ARCHON_REQUIRE_REAL();
     const auto install = openGameInstall(*realGameDir());
     QVERIFY(install);
-    QCOMPARE(install->edition, GameEdition::Legacy);
+    QCOMPARE(install->edition, std::filesystem::exists(*realGameDir() / "GTA5_Enhanced.exe") ? GameEdition::Enhanced : GameEdition::Legacy);
     const auto archives = listArchives(*install);
     for (const char *expected : { "common.rpf", "x64a.rpf", "update/update.rpf" })
         QVERIFY2(std::ranges::find(archives, std::filesystem::path(expected)) != archives.end(), expected);

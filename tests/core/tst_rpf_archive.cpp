@@ -1,3 +1,4 @@
+#include "core/game/game_install.h"
 #include "core/rpf/rpf_archive.h"
 #include "support/real_install.h"
 #include "support/real_keys.h"
@@ -255,8 +256,9 @@ void TestRpfArchive::parsesRealArchives()
 
     const auto x64a = parseFile(*realGameDir() / "x64a.rpf", keys);
     QVERIFY2(x64a, x64a ? "" : x64a.error().message.c_str());
-    QCOMPARE(x64a->entries().size(), std::size_t(656));
-    QCOMPARE(countKinds(*x64a), (std::array<int, 3> { 32, 196, 428 }));
+    const bool enhanced = openGameInstall(*realGameDir())->edition == GameEdition::Enhanced;
+    QCOMPARE(x64a->entries().size(), std::size_t(enhanced ? 641 : 656));
+    QCOMPARE(countKinds(*x64a), enhanced ? (std::array<int, 3> { 31, 187, 423 }) : (std::array<int, 3> { 32, 196, 428 }));
     QCOMPARE(x64a->encryption(), RpfEncryption::Ng);
     const auto data = x64a->find("data");
     QVERIFY(data);
@@ -264,8 +266,8 @@ void TestRpfArchive::parsesRealArchives()
 
     const auto common = parseFile(*realGameDir() / "common.rpf", keys);
     QVERIFY2(common, common ? "" : common.error().message.c_str());
-    QCOMPARE(common->entries().size(), std::size_t(1421));
-    QCOMPARE(countKinds(*common), (std::array<int, 3> { 43, 1378, 0 }));
+    QCOMPARE(common->entries().size(), std::size_t(enhanced ? 705 : 1421));
+    QCOMPARE(countKinds(*common), enhanced ? (std::array<int, 3> { 40, 665, 0 }) : (std::array<int, 3> { 43, 1378, 0 }));
 
     const auto update = parseFile(*realGameDir() / "update" / "update.rpf", keys);
     QVERIFY2(update, update ? "" : update.error().message.c_str());

@@ -16,6 +16,8 @@ struct Texture {
     std::uint32_t format;
     std::uint32_t usage;
     std::vector<std::byte> data;
+    std::uint32_t enhancedFlags = 0x00260208;
+    std::uint8_t enhancedMipFlags = 0;
 };
 
 inline constexpr std::uint32_t legacyDictionaryVersion = 13;

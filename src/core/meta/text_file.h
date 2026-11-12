@@ -4,11 +4,14 @@
 
 #include <QString>
 
+#include <cstdint>
 #include <span>
 #include <string_view>
 #include <vector>
 
 namespace archon {
+
+inline constexpr std::uint64_t textFileLimit = 64u << 20;
 
 struct TextFile {
     QString text;
@@ -18,7 +21,8 @@ struct TextFile {
 };
 
 bool isTextMetadataName(std::string_view name);
+std::string textTooLargeMessage(std::string_view name);
 Result<TextFile> decodeTextFile(std::span<const std::byte> bytes, std::string_view name);
-std::vector<std::byte> encodeTextFile(const TextFile &file, const QString &text);
+Result<std::vector<std::byte>> encodeTextFile(const TextFile &file, const QString &text);
 
 }

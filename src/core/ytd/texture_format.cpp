@@ -65,4 +65,20 @@ std::uint32_t textureStride(std::uint32_t format, std::uint32_t width)
     return info ? width * info->bitsPerPixel / 8 : 0;
 }
 
+std::uint32_t withoutSrgb(std::uint32_t format)
+{
+    switch (format) {
+    case 0x80000048:
+        return 0x31545844;
+    case 0x8000004B:
+        return 0x33545844;
+    case 0x8000004E:
+        return 0x35545844;
+    case 0x80000063:
+        return 0x20374342;
+    default:
+        return format;
+    }
+}
+
 }

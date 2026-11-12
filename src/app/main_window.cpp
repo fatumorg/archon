@@ -257,7 +257,7 @@ void MainWindow::buildActions()
     chooseGameAction_ = new QAction(tr("&Choose game…"), this);
     connect(chooseGameAction_, &QAction::triggered, this, [this] {
         const auto chosen = pickInstall(this);
-        if (!chosen || std::filesystem::equivalent(chosen->root, root_))
+        if (!chosen || isSameFolder(chosen->root, root_))
             return;
         emit gameChangeRequested();
         close();
@@ -614,6 +614,10 @@ void MainWindow::activate(QTreeWidgetItem *item)
     }
     if (QString::fromStdString(node.name).endsWith(QLatin1StringView(".ytd"), Qt::CaseInsensitive)) {
         openTextures(QString::fromStdString(node.name));
+        return;
+    }
+    if (isTextMetadataName(node.name) && node.size > textFileLimit) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(textTooLargeMessage(node.name)));
         return;
     }
     if (isTextMetadataName(node.name)) {

@@ -2,6 +2,7 @@
 
 #include "core/io/ascii.h"
 
+#include <QList>
 #include <QStringDecoder>
 
 #include <algorithm>
@@ -11,7 +12,6 @@ namespace archon {
 
 namespace {
 
-constexpr std::size_t textLimit = 64u << 20;
 constexpr std::array<std::string_view, 12> textExtensions { ".meta", ".xml", ".dat", ".txt", ".ini", ".cfg", ".ide", ".ipl", ".log", ".csv", ".lua", ".json" };
 constexpr std::array<unsigned char, 3> utf8Bom { 0xEF, 0xBB, 0xBF };
 
@@ -28,10 +28,15 @@ bool isTextMetadataName(std::string_view name)
     return std::ranges::any_of(textExtensions, [&lower](std::string_view extension) { return lower.ends_with(extension); });
 }
 
+std::string textTooLargeMessage(std::string_view name)
+{
+    return std::string(name) + " is larger than 64 MiB";
+}
+
 Result<TextFile> decodeTextFile(std::span<const std::byte> bytes, std::string_view name)
 {
-    if (bytes.size() > textLimit)
-        return std::unexpected(Error { "text", 0, std::string(name) + " is larger than 64 MiB" });
+    if (bytes.size() > textFileLimit)
+        return std::unexpected(Error { "text", 0, textTooLargeMessage(name) });
     TextFile file { {}, false, false, false };
     std::span<const std::byte> body = bytes;
     if (body.size() >= 3 && std::ranges::equal(body.first(3), utf8Bom, [](std::byte a, unsigned char b) { return std::to_integer<unsigned char>(a) == b; })) {
@@ -65,8 +70,14 @@ Result<TextFile> decodeTextFile(std::span<const std::byte> bytes, std::string_vi
     return file;
 }
 
-std::vector<std::byte> encodeTextFile(const TextFile &file, const QString &text)
+Result<std::vector<std::byte>> encodeTextFile(const TextFile &file, const QString &text)
 {
+    if (file.latin1) {
+        for (const char32_t character : text.toUcs4()) {
+            if (character > 0xFF)
+                return std::unexpected(Error { "text", 0, QStringLiteral("This file is stored as Latin-1, which cannot hold \u201c%1\u201d.").arg(QString::fromUcs4(&character, 1)).toStdString() });
+        }
+    }
     QString normalized = text;
     normalized.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     if (file.crlf)

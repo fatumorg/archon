@@ -24,6 +24,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QFile>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressDialog>
@@ -128,6 +129,7 @@ private slots:
     void texturesOpenEditAndSave();
     void editionIsShownAndGameChoiceCanBeCancelled();
     void textMetadataOpensEditsAndSaves();
+    void hugeTextFileIsRefusedBeforeReading();
 
 private:
     void turnOnEditMode()
@@ -851,6 +853,33 @@ void TestMainWindow::textMetadataOpensEditsAndSaves()
     QVERIFY(seen.first().startsWith(QStringLiteral("a.txt - ARCHON")));
     QVERIFY2(boxes.isEmpty(), qPrintable(boxes.join(QLatin1Char('\n'))));
     QCOMPARE(entryText(root_ / "mods" / "common.rpf", "data/a.txt"), std::string("edited"));
+}
+
+void TestMainWindow::hugeTextFileIsRefusedBeforeReading()
+{
+    QFile huge(QString::fromStdString((root_ / "update" / "huge.log").string()));
+    QVERIFY(huge.open(QIODevice::WriteOnly));
+    QVERIFY(huge.resize((qint64(64) << 20) + 1));
+    huge.close();
+    QVERIFY(huge.setPermissions(QFileDevice::Permissions()));
+    QVERIFY(window_->navigate(QStringLiteral("update")));
+    QStringList boxes;
+    bool editorOpened = false;
+    QTimer driver;
+    driver.setInterval(20);
+    connect(&driver, &QTimer::timeout, this, [&boxes, &editorOpened] {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            boxes.append(box->text());
+            QTimer::singleShot(0, box, &QWidget::close);
+        } else if (auto *editor = qobject_cast<TextEditor *>(QApplication::activeModalWidget())) {
+            editorOpened = true;
+            QTimer::singleShot(0, editor, &QDialog::accept);
+        }
+    });
+    driver.start();
+    emit list_->itemActivated(row(list_, QStringLiteral("huge.log")), 0);
+    QVERIFY(!editorOpened);
+    QCOMPARE(boxes, QStringList { QStringLiteral("huge.log is larger than 64 MiB") });
 }
 
 QTEST_MAIN(TestMainWindow)

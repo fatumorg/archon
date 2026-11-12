@@ -13,6 +13,7 @@ private slots:
     void latin1RoundTripsByteExact();
     void binaryIsRefused();
     void lfStaysLf();
+    void latin1RefusesCharactersItCannotHold();
 };
 
 namespace {
@@ -33,9 +34,9 @@ void TestTextFile::decodesUtf8AndKeepsLayout()
     QVERIFY(file->crlf);
     QVERIFY(!file->latin1);
     QCOMPARE(file->text, QStringLiteral("<CHandlingDataMgr>\n\t<x>café</x>\n</CHandlingDataMgr>\n"));
-    QCOMPARE(toText(encodeTextFile(*file, file->text)), original);
+    QCOMPARE(toText(*encodeTextFile(*file, file->text)), original);
     const auto edited = encodeTextFile(*file, QStringLiteral("<a/>\n<b/>"));
-    QCOMPARE(toText(edited), std::string("\xEF\xBB\xBF<a/>\r\n<b/>"));
+    QCOMPARE(toText(*edited), std::string("\xEF\xBB\xBF<a/>\r\n<b/>"));
 }
 
 void TestTextFile::latin1RoundTripsByteExact()
@@ -45,7 +46,7 @@ void TestTextFile::latin1RoundTripsByteExact()
     QVERIFY(file);
     QVERIFY(file->latin1);
     QCOMPARE(file->text, QStringLiteral("name=café\nnext=1\n"));
-    QCOMPARE(toText(encodeTextFile(*file, file->text)), original);
+    QCOMPARE(toText(*encodeTextFile(*file, file->text)), original);
 }
 
 void TestTextFile::binaryIsRefused()
@@ -62,7 +63,17 @@ void TestTextFile::lfStaysLf()
     QVERIFY(file);
     QVERIFY(!file->crlf);
     QVERIFY(!file->bom);
-    QCOMPARE(toText(encodeTextFile(*file, QStringLiteral("x\ny"))), std::string("x\ny"));
+    QCOMPARE(toText(*encodeTextFile(*file, QStringLiteral("x\ny"))), std::string("x\ny"));
+}
+
+void TestTextFile::latin1RefusesCharactersItCannotHold()
+{
+    const auto file = decodeTextFile(bytesOf("caf\xE9\n"), "x.dat");
+    QVERIFY(file && file->latin1);
+    const auto refused = encodeTextFile(*file, QStringLiteral("price 5\u20ac"));
+    QVERIFY(!refused);
+    QCOMPARE(refused.error().message, std::string("This file is stored as Latin-1, which cannot hold \u201c\u20ac\u201d."));
+    QVERIFY(encodeTextFile(*decodeTextFile(bytesOf("a\n"), "y.txt"), QStringLiteral("price 5\u20ac")));
 }
 
 QTEST_APPLESS_MAIN(TestTextFile)

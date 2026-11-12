@@ -140,7 +140,12 @@ bool TextEditor::save()
 {
     if (!editable_ || !modified_)
         return false;
-    const auto result = save_(encodeTextFile(file_, text_->toPlainText()));
+    const auto encoded = encodeTextFile(file_, text_->toPlainText());
+    if (!encoded) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(encoded.error().message));
+        return false;
+    }
+    const auto result = save_(*encoded);
     if (!result) {
         if (!result.error().message.empty())
             QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(result.error().message));

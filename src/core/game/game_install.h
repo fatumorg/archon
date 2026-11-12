@@ -19,6 +19,7 @@ struct GameInstall {
 
 Result<GameInstall> openGameInstall(const std::filesystem::path &root);
 std::vector<GameInstall> findSteamInstalls(const std::filesystem::path &home);
+bool isSameFolder(const std::filesystem::path &first, const std::filesystem::path &second);
 std::vector<std::filesystem::path> listArchives(const GameInstall &install);
 Result<std::vector<std::string>> readDlcList(const GameInstall &install, const Keys &keys);
 

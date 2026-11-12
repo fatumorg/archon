@@ -49,10 +49,14 @@ void TestTextureEdit::addsAndRefusesDuplicates()
 void TestTextureEdit::replaceKeepsNameAndUsage()
 {
     std::vector<Texture> textures { texture("diffuse", 0x2002b054) };
+    textures[0].enhancedFlags = 0x00260228;
+    textures[0].enhancedMipFlags = 0x28;
     Texture replacement { "imported_file", 8, 8, 2, 21, 0x20000014, std::vector<std::byte>(320) };
     QVERIFY(replaceTexture(textures, "DIFFUSE", replacement));
     QCOMPARE(textures[0].name, std::string("diffuse"));
     QCOMPARE(textures[0].usage, 0x2002b054u);
+    QCOMPARE(textures[0].enhancedFlags, 0x00260228u);
+    QCOMPARE(textures[0].enhancedMipFlags, std::uint8_t(0x28));
     QCOMPARE(textures[0].width, 8u);
     QCOMPARE(textures[0].format, 21u);
     QVERIFY(!replaceTexture(textures, "missing", replacement));

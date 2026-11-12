@@ -58,22 +58,6 @@ constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 6> dxgiFormats { {
     { 71, dxt1 }, { 74, dxt3 }, { 77, dxt5 }, { 80, ati1 }, { 83, ati2 }, { 98, bc7 },
 } };
 
-std::uint32_t baseFormat(std::uint32_t format)
-{
-    switch (format) {
-    case enhancedOnly | 72:
-        return dxt1;
-    case enhancedOnly | 75:
-        return dxt3;
-    case enhancedOnly | 78:
-        return dxt5;
-    case enhancedOnly | 99:
-        return bc7;
-    default:
-        return format;
-    }
-}
-
 std::unexpected<Error> failure(std::string message)
 {
     return std::unexpected(Error { format, 0, std::move(message) });
@@ -129,7 +113,7 @@ Result<std::vector<std::byte>> decodeRgba(const Texture &texture, std::uint32_t 
             for (std::uint32_t bx = 0; bx < blocksWide; ++bx) {
                 const void *compressed = source.data() + (std::size_t(by) * blocksWide + bx) * blockBytes;
                 block.fill(0);
-                switch (baseFormat(texture.format)) {
+                switch (withoutSrgb(texture.format)) {
                 case dxt1:
                     bcdec_bc1(compressed, block.data(), 16);
                     break;

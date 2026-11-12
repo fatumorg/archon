@@ -46,6 +46,8 @@ Result<void> replaceTexture(std::vector<Texture> &textures, std::string_view nam
         return failure("no texture named " + std::string(name));
     replacement.name = found->name;
     replacement.usage = found->usage;
+    replacement.enhancedFlags = found->enhancedFlags;
+    replacement.enhancedMipFlags = found->enhancedMipFlags;
     *found = std::move(replacement);
     return {};
 }

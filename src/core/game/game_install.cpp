@@ -131,4 +131,10 @@ Result<std::vector<std::string>> readDlcList(const GameInstall &install, const K
     return names;
 }
 
+bool isSameFolder(const std::filesystem::path &first, const std::filesystem::path &second)
+{
+    std::error_code error;
+    return std::filesystem::equivalent(first, second, error) && !error;
+}
+
 }
