@@ -16,6 +16,12 @@ Editing an archive outside the `mods` folder first offers to copy it there, so t
 
 Every change is written through a journal and backed up before any byte is overwritten. Tools > Change history lists the changes and rolls any of them back, together with every newer one. If ARCHON stops in the middle of a change, it offers to roll it back on the next start. A rollback is refused when the file was changed by something else afterwards, for example by Steam verifying the game.
 
+## Textures
+
+Opening a `.ytd` file shows its textures with a preview. Export saves the selected texture or all of them as DDS or PNG. In edit mode the dictionary can be changed: replace or add textures from DDS files (kept in their own format and mipmaps) or from PNG, JPEG, BMP and TGA images (stored as A8R8G8B8 with generated mipmaps), rename and remove textures, then Save. Saving inside an archive outside `mods` asks first, like every other archive edit. ARCHON has no block-compression encoder, so an imported image is stored uncompressed.
+
+Supported formats: DXT1, DXT3, DXT5, ATI1, ATI2, BC7 and the uncompressed A8R8G8B8, X8R8G8B8, A8B8G8R8, R5G6B5, A1R5G5B5, A8 and L8. Block decoding uses [bcdec](https://github.com/iOrange/bcdec).
+
 ## Package Installer
 
 Tools > Package Installer, or opening an `.oiv` file in the file list, shows the package with its own colours, description and licence. It installs into the `mods` folder (default: every archive the package changes is copied there first) or straight into the game folder. A package installs completely or not at all, and it is one entry in Change history, so rolling that entry back uninstalls it.
