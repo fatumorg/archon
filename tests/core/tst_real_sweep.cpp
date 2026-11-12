@@ -1,10 +1,15 @@
 #include "core/game/game_install.h"
 #include "core/io/ascii.h"
 #include "core/rpf/rpf_reader.h"
+#include "core/rsc/rsc7.h"
+#include "core/ytd/texture_dictionary.h"
+#include "core/ytd/texture_format.h"
 #include "support/real_install.h"
 #include "support/real_keys.h"
 
 #include <QTest>
+
+#include <map>
 
 using namespace archon;
 using namespace archon::test;
@@ -15,6 +20,9 @@ struct Totals {
     std::uint64_t archives = 0;
     std::uint64_t entries = 0;
     std::uint64_t bytes = 0;
+    std::uint64_t dictionaries = 0;
+    std::uint64_t textures = 0;
+    std::map<std::uint32_t, std::uint64_t> unknownFormats;
     std::vector<std::string> failures;
 };
 
@@ -37,10 +45,24 @@ void walk(const RpfReader &reader, const std::string &archivePath, Totals &total
             continue;
         }
         const auto data = reader.fileData(index);
-        if (data)
-            totals.bytes += data->size();
-        else
+        if (!data) {
             totals.failures.push_back(archivePath + " : " + entryPath + " : " + data.error().message);
+            continue;
+        }
+        totals.bytes += data->size();
+        if (entry.kind == RpfEntryKind::Resource && asciiLower(entry.name).ends_with(".ytd")) {
+            const auto textures = readTextureDictionary(*data, rsc7SizeFromFlags(entry.systemFlags));
+            if (!textures) {
+                totals.failures.push_back(archivePath + " : " + entryPath + " : " + textures.error().message);
+                continue;
+            }
+            ++totals.dictionaries;
+            totals.textures += textures->size();
+            for (const Texture &texture : *textures) {
+                if (!textureFormat(texture.format))
+                    ++totals.unknownFormats[texture.format];
+            }
+        }
     }
 }
 
@@ -71,6 +93,9 @@ void TestRealSweep::readsEveryEntryOfTheInstall()
     qInfo("archives %llu (top level %zu), entries %llu, bytes %llu, failures %zu",
         static_cast<unsigned long long>(totals.archives), archives.size(),
         static_cast<unsigned long long>(totals.entries), static_cast<unsigned long long>(totals.bytes), totals.failures.size());
+    qInfo("texture dictionaries %llu, textures %llu", static_cast<unsigned long long>(totals.dictionaries), static_cast<unsigned long long>(totals.textures));
+    for (const auto &[format, count] : totals.unknownFormats)
+        qInfo("unknown texture format %u: %llu", format, static_cast<unsigned long long>(count));
     for (std::size_t i = 0; i < totals.failures.size() && i < 200; ++i)
         qWarning("%s", totals.failures[i].c_str());
     QCOMPARE(totals.failures.size(), std::size_t(0));

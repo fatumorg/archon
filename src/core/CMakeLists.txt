@@ -23,9 +23,12 @@ add_library(archon-core STATIC
     rpf/rpf_reader.cpp
     rpf/rpf_toc.cpp
     rpf/rpf_writer.cpp
+    rsc/resource_file.cpp
     rsc/rsc7.cpp
     safety/transaction.cpp
     search/entry_search.cpp
+    ytd/texture_dictionary.cpp
+    ytd/texture_format.cpp
     version.cpp
 )
 target_include_directories(archon-core PUBLIC ${CMAKE_SOURCE_DIR}/src)

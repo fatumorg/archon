@@ -1,0 +1,64 @@
+#include "core/rsc/resource_file.h"
+
+#include "core/crypto/inflate.h"
+#include "core/rsc/rsc7.h"
+
+#include <bit>
+
+namespace archon {
+
+namespace {
+
+constexpr std::uint64_t pageUnit = 0x200;
+constexpr std::uint64_t minimumPage = 0x2000;
+constexpr std::uint32_t maxShift = 15;
+constexpr std::uint32_t singleUnitBit = 27;
+constexpr std::uint32_t largestUnitBit = 4;
+constexpr std::uint64_t largestUnits = 256;
+constexpr std::size_t headerSize = 16;
+constexpr std::uint64_t resourceLimit = 1ull << 31;
+
+}
+
+std::uint64_t singlePageSize(std::uint64_t content)
+{
+    return std::max(minimumPage, std::bit_ceil(std::max<std::uint64_t>(content, 1)));
+}
+
+std::uint32_t singlePageFlags(std::uint64_t size, std::uint32_t versionNibble)
+{
+    const std::uint32_t version = (versionNibble & 0xF) << 28;
+    if (size <= pageUnit << maxShift)
+        return version | (1u << singleUnitBit) | static_cast<std::uint32_t>(std::countr_zero(size / pageUnit));
+    return version | (1u << largestUnitBit) | static_cast<std::uint32_t>(std::countr_zero(size / largestUnits / pageUnit));
+}
+
+std::vector<std::byte> buildResourceFile(std::uint32_t version, std::span<const std::byte> system, std::span<const std::byte> graphics)
+{
+    const std::uint64_t systemSize = singlePageSize(system.size());
+    const std::uint64_t graphicsSize = graphics.empty() ? 0 : singlePageSize(graphics.size());
+    std::vector<std::byte> pages(static_cast<std::size_t>(systemSize + graphicsSize));
+    std::ranges::copy(system, pages.begin());
+    std::ranges::copy(graphics, pages.begin() + static_cast<std::ptrdiff_t>(systemSize));
+    const Rsc7Header header { version, singlePageFlags(systemSize, (version >> 4) & 0xF), graphics.empty() ? 0u : singlePageFlags(graphicsSize, version & 0xF) };
+    const auto head = buildRsc7Header(header);
+    std::vector<std::byte> file(head.begin(), head.end());
+    const auto body = compressRaw(pages);
+    file.insert(file.end(), body.begin(), body.end());
+    return file;
+}
+
+Result<std::vector<std::byte>> inflateResource(std::span<const std::byte> file)
+{
+    if (file.size() < headerSize)
+        return std::unexpected(Error { "rsc7", 0, "resource is smaller than its header" });
+    const auto header = parseRsc7Header(file.first(headerSize));
+    if (!header)
+        return std::unexpected(header.error());
+    const std::uint64_t size = rsc7SizeFromFlags(header->systemFlags) + rsc7SizeFromFlags(header->graphicsFlags);
+    if (size > resourceLimit)
+        return std::unexpected(Error { "rsc7", 0, "declared size exceeds the allocation limit" });
+    return inflateRaw(file.subspan(headerSize), static_cast<std::size_t>(size));
+}
+
+}
