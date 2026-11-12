@@ -15,9 +15,11 @@ add_library(archon-core STATIC
     io/path_resolver.cpp
     io/writable_file.cpp
     io/zip_archive.cpp
+    io/zip_writer.cpp
     oiv/content_edit.cpp
     oiv/oiv_installer.cpp
     oiv/oiv_package.cpp
+    oiv/oiv_writer.cpp
     rpf/rpf_archive.cpp
     rpf/rpf_extract.cpp
     rpf/rpf_reader.cpp
