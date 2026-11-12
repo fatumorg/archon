@@ -407,6 +407,7 @@ struct Transaction::State {
     std::uint64_t journalSize = 0;
     std::vector<Touched> touched;
     std::vector<std::filesystem::path> whole;
+    std::map<std::filesystem::path, WritableFile> wholeHandles;
     std::uint32_t backups = 0;
     bool changed = false;
     bool finished = false;
@@ -435,6 +436,16 @@ struct Transaction::State {
     {
         const auto found = std::ranges::find(touched, file, &Touched::file);
         return found == touched.end() ? nullptr : &*found;
+    }
+
+    Result<WritableFile *> wholeHandle(const std::filesystem::path &path)
+    {
+        if (const auto found = wholeHandles.find(path); found != wholeHandles.end())
+            return &found->second;
+        auto handle = WritableFile::open(path, false);
+        if (!handle)
+            return std::unexpected(handle.error());
+        return &wholeHandles.emplace(path, std::move(*handle)).first->second;
     }
 
     Result<Touched *> touch(const std::filesystem::path &path)
@@ -531,6 +542,12 @@ Result<void> Transaction::writeAt(const std::filesystem::path &file, std::uint64
     const auto path = state_->checked(file);
     if (!path)
         return std::unexpected(path.error());
+    if (state_->isWhole(*path)) {
+        const auto handle = state_->wholeHandle(*path);
+        if (!handle)
+            return std::unexpected(handle.error());
+        return (*handle)->write(offset, data);
+    }
     const auto found = state_->touch(*path);
     if (!found)
         return std::unexpected(found.error());
@@ -561,6 +578,12 @@ Result<std::vector<std::byte>> Transaction::readAt(const std::filesystem::path &
     const auto path = state_->checked(file);
     if (!path)
         return std::unexpected(path.error());
+    if (state_->isWhole(*path)) {
+        const auto handle = state_->wholeHandle(*path);
+        if (!handle)
+            return std::unexpected(handle.error());
+        return (*handle)->read(offset, count);
+    }
     const auto touched = state_->touch(*path);
     if (!touched)
         return std::unexpected(touched.error());
@@ -572,6 +595,12 @@ Result<std::uint64_t> Transaction::sizeOf(const std::filesystem::path &file)
     const auto path = state_->checked(file);
     if (!path)
         return std::unexpected(path.error());
+    if (state_->isWhole(*path)) {
+        const auto handle = state_->wholeHandle(*path);
+        if (!handle)
+            return std::unexpected(handle.error());
+        return (*handle)->size();
+    }
     if (const State::Touched *touched = state_->findTouched(*path))
         return touched->handle.size();
     std::error_code error;
@@ -586,8 +615,7 @@ Result<void> Transaction::replaceFile(const std::filesystem::path &file, const s
     const auto path = state_->checked(file);
     if (!path)
         return std::unexpected(path.error());
-    if (state_->isWhole(*path) || state_->findTouched(*path) != nullptr)
-        return failure(path->string() + " was already changed in this transaction");
+    state_->wholeHandles.erase(*path);
     std::error_code error;
     const bool exists = std::filesystem::symlink_status(*path, error).type() != std::filesystem::file_type::not_found;
     if (exists && !isRegularFile(*path))
@@ -638,6 +666,11 @@ Result<void> Transaction::removeFile(const std::filesystem::path &file)
 
 Result<void> Transaction::createDirectories(const std::filesystem::path &directory)
 {
+    std::filesystem::path normal = directory.lexically_normal();
+    if (normal.filename().empty())
+        normal = normal.parent_path();
+    if (normal == state_->root && !state_->finished)
+        return {};
     const auto path = state_->checked(directory);
     if (!path)
         return std::unexpected(path.error());
@@ -680,16 +713,25 @@ Result<void> Transaction::commit()
         ++count;
     };
     for (State::Touched &touched : state_->touched) {
-        if (const auto synced = touched.handle.sync(); !synced)
+        if (!state_->isWhole(touched.file)) {
+            if (const auto synced = touched.handle.sync(); !synced)
+                return synced;
+        }
+    }
+    for (auto &[file, handle] : state_->wholeHandles) {
+        if (const auto synced = handle.sync(); !synced)
             return synced;
     }
     std::vector<std::filesystem::path> files;
     for (const State::Touched &touched : state_->touched)
         files.push_back(touched.file);
+    for (const auto &file : state_->whole) {
+        if (std::ranges::find(files, file) == files.end())
+            files.push_back(file);
+    }
     state_->touched.clear();
+    state_->wholeHandles.clear();
     for (const auto &file : files)
-        addFinal(file);
-    for (const auto &file : state_->whole)
         addFinal(file);
     std::vector<std::byte> payload;
     putInteger(payload, static_cast<std::uint64_t>(QDateTime::currentMSecsSinceEpoch()), 8);
@@ -708,6 +750,7 @@ Result<void> Transaction::rollback()
         return failure("the transaction is already finished");
     state_->finished = true;
     state_->touched.clear();
+    state_->wholeHandles.clear();
     state_->journal.reset();
     return undo(state_->directory);
 }

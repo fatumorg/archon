@@ -15,5 +15,6 @@ struct ArchiveEdit {
 
 Result<void> editArchive(Transaction &transaction, const std::filesystem::path &file, std::span<const std::string> nested, std::span<const ArchiveEdit> edits, const Keys *keys);
 Result<void> rebuildArchive(Transaction &transaction, const std::filesystem::path &file, const Keys *keys);
+std::vector<std::byte> emptyArchiveBytes();
 
 }

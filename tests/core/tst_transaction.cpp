@@ -54,6 +54,8 @@ private slots:
     void emptyTransactionLeavesNoHistory();
     void interruptedRollbackCanBeResumed();
     void newFileThenWriteAtRollsBackBoth();
+    void wholeAndInPlaceWritesMixOnOneFile();
+    void creatingTheRootIsNothing();
 
 private:
     Result<Transaction> begin(const char *description = "test change")
@@ -341,6 +343,58 @@ void TestTransaction::newFileThenWriteAtRollsBackBoth()
     QVERIFY(transaction->rollback());
     QVERIFY(!std::filesystem::exists(created));
     QCOMPARE(readFile(file_), original_);
+}
+
+void TestTransaction::wholeAndInPlaceWritesMixOnOneFile()
+{
+    const std::filesystem::path created = root_ / "mods" / "new.rpf";
+    const auto produce = [](std::string content) {
+        return [content](const std::filesystem::path &temporary) -> Result<void> {
+            writeFile(temporary, content);
+            return {};
+        };
+    };
+    {
+        auto transaction = begin("Mixed");
+        QVERIFY(transaction);
+        QVERIFY(transaction->writeAt(file_, 0, pattern(10, 7)));
+        QVERIFY(transaction->replaceFile(file_, produce("replaced content")));
+        QVERIFY(transaction->writeAt(file_, 0, toVector("REPLACED")));
+        QVERIFY(transaction->writeAt(file_, 16, toVector("+tail")));
+        const auto read = transaction->readAt(file_, 0, 8);
+        QVERIFY(read);
+        QCOMPARE(toText(*read), std::string("REPLACED"));
+        QCOMPARE(*transaction->sizeOf(file_), std::uint64_t(21));
+        QVERIFY(transaction->replaceFile(file_, produce("third")));
+        QVERIFY(transaction->writeAt(file_, 0, toVector("T")));
+
+        QVERIFY(transaction->createDirectories(created.parent_path()));
+        QVERIFY(transaction->replaceFile(created, produce("new")));
+        QVERIFY(transaction->writeAt(created, 0, toVector("NEW")));
+        QVERIFY(transaction->replaceFile(created, produce("second")));
+        QVERIFY(transaction->commit());
+    }
+    QCOMPARE(toText(readFile(file_)), std::string("Third"));
+    QCOMPARE(toText(readFile(created)), std::string("second"));
+    const auto history = listTransactions(store_);
+    QCOMPARE(history.size(), std::size_t(1));
+    QVERIFY(history.front().committed);
+    const auto rolled = rollbackTransaction(store_, history.front().id);
+    QVERIFY2(rolled, rolled ? "" : rolled.error().message.c_str());
+    QCOMPARE(readFile(file_), original_);
+    QVERIFY(!std::filesystem::exists(created));
+    QVERIFY(!std::filesystem::exists(root_ / "mods"));
+}
+
+void TestTransaction::creatingTheRootIsNothing()
+{
+    auto transaction = begin();
+    QVERIFY(transaction);
+    QVERIFY(transaction->createDirectories(root_));
+    QVERIFY(transaction->createDirectories(root_.string() + "/"));
+    QVERIFY(!transaction->createDirectories(root_.parent_path()));
+    QVERIFY(transaction->rollback());
+    QVERIFY(std::filesystem::is_directory(root_));
 }
 
 QTEST_APPLESS_MAIN(TestTransaction)

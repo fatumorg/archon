@@ -711,4 +711,14 @@ Result<void> rebuildArchive(Transaction &transaction, const std::filesystem::pat
     });
 }
 
+std::vector<std::byte> emptyArchiveBytes()
+{
+    RpfEntry root {};
+    root.kind = RpfEntryKind::Directory;
+    root.firstChild = 1;
+    std::vector<std::byte> bytes = serializeToc({ root }).value();
+    bytes.resize(aligned(bytes.size()));
+    return bytes;
+}
+
 }
