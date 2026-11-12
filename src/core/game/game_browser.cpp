@@ -136,6 +136,7 @@ Result<GameBrowser::Location> GameBrowser::resolve(std::string_view path, bool e
                 return failure(std::string(component) + " not found in " + location.canonical);
             location.entry = *child;
             location.name = entries[*child].name;
+            location.inner = location.inner.empty() ? location.name : location.inner + '/' + location.name;
             archive = entries[*child].kind == RpfEntryKind::Binary && isArchiveName(location.name);
         } else {
             if (component == "." || component == "..")
@@ -155,6 +156,11 @@ Result<GameBrowser::Location> GameBrowser::resolve(std::string_view path, bool e
             auto reader = archiveAt(location.canonical, location);
             if (!reader)
                 return std::unexpected(reader.error());
+            if (location.reader)
+                location.nested.push_back(location.inner);
+            else
+                location.archiveFile = location.disk;
+            location.inner.clear();
             location.reader = std::move(*reader);
             location.entry = 0;
             onDiskFile = false;
@@ -228,6 +234,23 @@ Result<ExtractSummary> GameBrowser::extract(std::string_view path, const std::fi
     if (!std::filesystem::copy_file(location->disk, target, error) || error)
         return failure("cannot write " + target.string());
     return ExtractSummary { 1, std::filesystem::file_size(target, error), {} };
+}
+
+Result<EditTarget> GameBrowser::locate(std::string_view path, bool enterArchive)
+{
+    const auto location = resolve(path, enterArchive);
+    if (!location)
+        return std::unexpected(location.error());
+    std::error_code error;
+    const bool directory = location->reader
+        ? location->reader->archive().entries()[location->entry].kind == RpfEntryKind::Directory
+        : std::filesystem::is_directory(location->disk, error);
+    return EditTarget { location->disk, location->archiveFile, location->nested, location->inner, location->name, location->canonical, directory };
+}
+
+void GameBrowser::forget()
+{
+    archives_.clear();
 }
 
 }

@@ -7,6 +7,7 @@ add_library(archon-core STATIC
     crypto/keys.cpp
     crypto/ng.cpp
     game/game_browser.cpp
+    game/game_edit.cpp
     game/game_install.cpp
     io/byte_reader.cpp
     io/path_resolver.cpp

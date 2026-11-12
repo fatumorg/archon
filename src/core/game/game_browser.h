@@ -18,6 +18,16 @@ struct BrowserNode {
     bool resource;
 };
 
+struct EditTarget {
+    std::filesystem::path disk;
+    std::filesystem::path archiveFile;
+    std::vector<std::string> nested;
+    std::string inner;
+    std::string name;
+    std::string canonical;
+    bool directory;
+};
+
 class GameBrowser {
 public:
     GameBrowser(std::filesystem::path root, std::shared_ptr<const Keys> keys);
@@ -25,6 +35,8 @@ public:
     Result<std::vector<BrowserNode>> list(std::string_view path);
     Result<std::string> canonicalPath(std::string_view path);
     Result<ExtractSummary> extract(std::string_view path, const std::filesystem::path &outputDirectory);
+    Result<EditTarget> locate(std::string_view path, bool enterArchive);
+    void forget();
 
 private:
     struct Location {
@@ -33,6 +45,9 @@ private:
         std::uint32_t entry = 0;
         std::string canonical;
         std::string name;
+        std::filesystem::path archiveFile;
+        std::vector<std::string> nested;
+        std::string inner;
     };
 
     Result<Location> resolve(std::string_view path, bool enterArchive);
