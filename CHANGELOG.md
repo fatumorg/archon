@@ -12,6 +12,7 @@
 - Rebuild archives to reclaim unused space.
 - Every change is journaled and backed up; Tools > Change history rolls changes back, and an interrupted change is offered for rollback on the next start.
 - ASI Manager: install the ASI Loader (Ultimate ASI Loader) and the mods folder loader (RageOpenV) from pinned downloads; add, remove, enable and disable ASI plugins.
+- Package Installer: installs OIV packages (2.0, 2.1, 2.2 and 1.x packages made for GTA V) into the "mods" folder or the game folder as one change, with file, archive, text and XML commands; uninstall from Change history.
 - Proton prefix setup: installs .NET Framework 4.8, the Visual C++ runtime and d3dcompiler_47, sets Windows 10 and the loader override through protontricks, and verifies each component.
 
 ## 0.1.0-beta2

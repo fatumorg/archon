@@ -16,6 +16,12 @@ Editing an archive outside the `mods` folder first offers to copy it there, so t
 
 Every change is written through a journal and backed up before any byte is overwritten. Tools > Change history lists the changes and rolls any of them back, together with every newer one. If ARCHON stops in the middle of a change, it offers to roll it back on the next start. A rollback is refused when the file was changed by something else afterwards, for example by Steam verifying the game.
 
+## Package Installer
+
+Tools > Package Installer, or opening an `.oiv` file in the file list, shows the package with its own colours, description and licence. It installs into the `mods` folder (default: every archive the package changes is copied there first) or straight into the game folder. A package installs completely or not at all, and it is one entry in Change history, so rolling that entry back uninstalls it.
+
+Supported: OIV 2.0, 2.1 and 2.2 (file add and delete, archives including nested and new ones, defragmentation, text and XML commands) and 1.x packages that target GTA V. PSO commands need the metadata support that is not built yet; a package that uses them is refused before anything changes.
+
 ## ASI Manager
 
 Tools > ASI Manager installs what the game needs to load mods:
