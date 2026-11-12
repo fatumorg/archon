@@ -27,6 +27,9 @@ private slots:
     void oversizedFieldsAreNotWritten();
     void resourceFileFlagsHoldPages();
     void realDictionariesRoundTrip();
+    void readsHandBuiltEnhancedDictionary();
+    void enhancedWriteThenReadIsIdentity();
+    void unknownVersionIsRefused();
 };
 
 namespace {
@@ -91,7 +94,46 @@ Result<std::vector<Texture>> reread(const std::vector<std::byte> &file)
     const auto pages = inflateResource(file);
     if (!pages)
         return std::unexpected(pages.error());
-    return readTextureDictionary(*pages, rsc7SizeFromFlags(header->systemFlags));
+    return readTextureDictionary(*pages, rsc7SizeFromFlags(header->systemFlags), header->version);
+}
+
+std::vector<std::byte> handBuiltEnhanced()
+{
+    std::vector<std::byte> pages(0x2000 + 0x1000);
+    put(pages, 0x00, 0x4068c308, 4);
+    put(pages, 0x04, 1, 4);
+    put(pages, 0x08, 0x500000c0, 8);
+    put(pages, 0x18, 1, 4);
+    put(pages, 0x20, 0x50000100, 8);
+    put(pages, 0x28, 1, 2);
+    put(pages, 0x2A, 2, 2);
+    put(pages, 0x30, 0x500000e0, 8);
+    put(pages, 0x38, 1, 2);
+    put(pages, 0x3A, 2, 2);
+    put(pages, 0x40, 0x406b7940, 4);
+    put(pages, 0x44, 1, 4);
+    put(pages, 0x48, 5, 4);
+    put(pages, 0x4C, 16, 4);
+    put(pages, 0x50, 0x00260208, 4);
+    put(pages, 0x58, 8, 2);
+    put(pages, 0x5A, 8, 2);
+    put(pages, 0x5C, 0x4d010001, 4);
+    put(pages, 0x60, 0x280200ff, 4);
+    put(pages, 0x64, 0x00010000, 4);
+    put(pages, 0x68, 0x500000f0, 8);
+    put(pages, 0x70, 0x50000098, 8);
+    put(pages, 0x78, 0x60000000, 8);
+    put(pages, 0x80, 0x00800274, 4);
+    put(pages, 0x84, 2, 4);
+    put(pages, 0x98, 0x406b77d8, 4);
+    const std::string name = "km_v_marmchair";
+    for (std::size_t i = 0; i < name.size(); ++i)
+        pages[0xf0 + i] = static_cast<std::byte>(name[i]);
+    put(pages, 0x100, jenkinsHash(std::as_bytes(std::span(name.data(), name.size()))), 4);
+    put(pages, 0xe0, 0x50000040, 8);
+    for (std::size_t i = 0; i < 80; ++i)
+        pages[0x2000 + i] = static_cast<std::byte>(i + 1);
+    return pages;
 }
 
 }
@@ -265,9 +307,10 @@ void TestTextureDictionary::realDictionariesRoundTrip()
             continue;
         const auto pages = reader->fileData(index);
         QVERIFY(pages);
-        const auto read = readTextureDictionary(*pages, rsc7SizeFromFlags(entries[index].systemFlags));
+        const std::uint32_t version = rsc7VersionFromFlags(entries[index].systemFlags, entries[index].graphicsFlags);
+        const auto read = readTextureDictionary(*pages, rsc7SizeFromFlags(entries[index].systemFlags), version);
         QVERIFY2(read, (entries[index].name + ": " + (read ? "" : read.error().message)).c_str());
-        const auto written = writeTextureDictionary(*read);
+        const auto written = writeTextureDictionary(*read, version);
         QVERIFY2(written, written ? "" : written.error().message.c_str());
         const auto again = reread(*written);
         QVERIFY2(again, again ? "" : again.error().message.c_str());
@@ -283,6 +326,50 @@ void TestTextureDictionary::realDictionariesRoundTrip()
     }
     QVERIFY(checked > 50);
     qInfo("cutsobjects.rpf: %zu dictionaries, %zu textures round-tripped", checked, textures);
+}
+
+void TestTextureDictionary::readsHandBuiltEnhancedDictionary()
+{
+    const auto textures = readTextureDictionary(handBuiltEnhanced(), 0x2000, 5);
+    QVERIFY2(textures, textures ? "" : textures.error().message.c_str());
+    QCOMPARE(textures->size(), std::size_t(1));
+    const Texture &first = textures->front();
+    QCOMPARE(first.name, std::string("km_v_marmchair"));
+    QCOMPARE(first.width, 8u);
+    QCOMPARE(first.levels, 2u);
+    QCOMPARE(first.format, 0x35545844u);
+    QCOMPARE(first.usage, 0x00800274u);
+    QCOMPARE(first.data.size(), std::size_t(80));
+    QCOMPARE(first.data[79], std::byte { 80 });
+}
+
+void TestTextureDictionary::enhancedWriteThenReadIsIdentity()
+{
+    const std::vector<Texture> textures {
+        texture("diffuse", 0x31545844, 512, 256, 8, 1),
+        texture("normal_n", 0x32495441, 128, 128, 6, 2),
+        texture("argb", 21, 64, 32, 7, 4),
+        texture("bc7", 0x20374342, 16, 16, 3, 5),
+    };
+    const auto file = writeTextureDictionary(textures, 5);
+    QVERIFY2(file, file ? "" : file.error().message.c_str());
+    QCOMPARE(parseRsc7Header(std::span(*file).first(16))->version, 5u);
+    const auto read = reread(*file);
+    QVERIFY2(read, read ? "" : read.error().message.c_str());
+    for (const Texture &expected : textures) {
+        const auto found = std::ranges::find(*read, expected.name, &Texture::name);
+        QVERIFY(found != read->end());
+        QCOMPARE(found->format, expected.format);
+        QCOMPARE(found->levels, expected.levels);
+        QCOMPARE(found->usage, 0x00800214u);
+        QVERIFY(found->data == expected.data);
+    }
+}
+
+void TestTextureDictionary::unknownVersionIsRefused()
+{
+    QCOMPARE(readTextureDictionary(handBuilt(), 0x2000, 7).error().message, std::string("texture dictionary version 7 is not supported"));
+    QVERIFY(!writeTextureDictionary(std::vector<Texture> {}, 7));
 }
 
 QTEST_APPLESS_MAIN(TestTextureDictionary)

@@ -17,7 +17,7 @@ class TextureViewer : public QDialog {
 public:
     using Save = std::function<Result<void>(const std::vector<std::byte> &file)>;
 
-    TextureViewer(const QString &title, std::vector<Texture> textures, bool editable, Save save, QWidget *parent = nullptr);
+    TextureViewer(const QString &title, std::vector<Texture> textures, bool editable, Save save, std::uint32_t version = legacyDictionaryVersion, QWidget *parent = nullptr);
 
     bool exportSelected(const QString &file);
     bool exportAll(const QString &folder, bool png);
@@ -39,6 +39,7 @@ private:
 
     std::vector<Texture> textures_;
     bool editable_;
+    std::uint32_t version_;
     bool modified_ = false;
     Save save_;
     QListWidget *list_ = nullptr;

@@ -51,7 +51,7 @@ void walk(const RpfReader &reader, const std::string &archivePath, Totals &total
         }
         totals.bytes += data->size();
         if (entry.kind == RpfEntryKind::Resource && asciiLower(entry.name).ends_with(".ytd")) {
-            const auto textures = readTextureDictionary(*data, rsc7SizeFromFlags(entry.systemFlags));
+            const auto textures = readTextureDictionary(*data, rsc7SizeFromFlags(entry.systemFlags), rsc7VersionFromFlags(entry.systemFlags, entry.graphicsFlags));
             if (!textures) {
                 totals.failures.push_back(archivePath + " : " + entryPath + " : " + textures.error().message);
                 continue;

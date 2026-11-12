@@ -939,11 +939,14 @@ void MainWindow::openTextures(const QString &name)
         }
     }
     Result<std::vector<Texture>> textures = std::unexpected(Error { "ytd", 0, extracted ? name.toStdString() + " cannot be read" : extracted.error().message });
+    std::uint32_t version = legacyDictionaryVersion;
     if (file.size() >= 16) {
         const auto header = parseRsc7Header(std::span(file).first(16));
         const auto pages = inflateResource(file);
+        if (header)
+            version = header->version;
         if (header && pages)
-            textures = readTextureDictionary(*pages, rsc7SizeFromFlags(header->systemFlags));
+            textures = readTextureDictionary(*pages, rsc7SizeFromFlags(header->systemFlags), version);
         else
             textures = std::unexpected(header ? pages.error() : header.error());
     }
@@ -964,7 +967,7 @@ void MainWindow::openTextures(const QString &name)
         if (!runEdit(tr("Saving textures…"), [&](GameEditor &editor) { return editor.replace(target, path.toStdString()); }))
             return std::unexpected(Error { "ytd", 0, std::string() });
         return {};
-    }, this);
+    }, version, this);
     viewer.exec();
 }
 

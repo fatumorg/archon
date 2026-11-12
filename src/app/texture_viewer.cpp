@@ -45,10 +45,11 @@ QString formatName(std::uint32_t code)
 
 }
 
-TextureViewer::TextureViewer(const QString &title, std::vector<Texture> textures, bool editable, Save save, QWidget *parent)
+TextureViewer::TextureViewer(const QString &title, std::vector<Texture> textures, bool editable, Save save, std::uint32_t version, QWidget *parent)
     : QDialog(parent)
     , textures_(std::move(textures))
     , editable_(editable)
+    , version_(version)
     , save_(std::move(save))
 {
     setWindowTitle(tr("%1 - Texture Dictionary").arg(title));
@@ -327,7 +328,7 @@ bool TextureViewer::save()
 {
     if (!editable_ || !modified_)
         return false;
-    const auto file = writeTextureDictionary(textures_);
+    const auto file = writeTextureDictionary(textures_, version_);
     if (!file)
         return warnIfFailed(std::unexpected(file.error()));
     if (!warnIfFailed(save_(*file)))

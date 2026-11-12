@@ -25,6 +25,7 @@ private slots:
     void editsAndSaves();
     void hostileNamesAndFormatsAreNotExported();
     void hugeImagesAreRefused();
+    void enhancedDictionaryIsSavedAsEnhanced();
 
 private:
     std::unique_ptr<TextureViewer> viewer(bool editable)
@@ -164,6 +165,22 @@ void TestTextureViewer::hugeImagesAreRefused()
     QVERIFY(driver.done());
     QVERIFY(driver.seen.first().contains(QStringLiteral("16384")));
     QCOMPARE(shown->findChild<QListWidget *>(QStringLiteral("textureList"))->count(), 2);
+}
+
+void TestTextureViewer::enhancedDictionaryIsSavedAsEnhanced()
+{
+    TextureViewer shown(QStringLiteral("e.ytd"), textures_, true, [this](const std::vector<std::byte> &bytes) -> Result<void> {
+        saved_ = bytes;
+        return {};
+    }, enhancedDictionaryVersion);
+    shown.renameSelected(QStringLiteral("renamed"));
+    QVERIFY(shown.save());
+    const auto header = parseRsc7Header(std::span(saved_).first(16));
+    QVERIFY(header);
+    QCOMPARE(header->version, 5u);
+    const auto textures = readTextureDictionary(*inflateResource(saved_), rsc7SizeFromFlags(header->systemFlags), header->version);
+    QVERIFY(textures);
+    QCOMPARE(textures->size(), std::size_t(2));
 }
 
 QTEST_MAIN(TestTextureViewer)
