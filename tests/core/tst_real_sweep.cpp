@@ -1,5 +1,6 @@
 #include "core/game/game_install.h"
 #include "core/io/ascii.h"
+#include "core/meta/metadata_document.h"
 #include "core/rpf/rpf_reader.h"
 #include "core/rsc/rsc7.h"
 #include "core/ytd/texture_dictionary.h"
@@ -22,6 +23,8 @@ struct Totals {
     std::uint64_t bytes = 0;
     std::uint64_t dictionaries = 0;
     std::uint64_t textures = 0;
+    std::uint64_t metadataExact = 0;
+    std::uint64_t metadataReadOnly = 0;
     std::map<std::uint32_t, std::uint64_t> unknownFormats;
     std::vector<std::string> unsupportedVersions;
     std::vector<std::string> failures;
@@ -51,6 +54,23 @@ void walk(const RpfReader &reader, const std::string &archivePath, Totals &total
             continue;
         }
         totals.bytes += data->size();
+        const std::string lower = asciiLower(entry.name);
+        if (lower.ends_with(".ymt") || lower.ends_with(".ymap") || lower.ends_with(".ytyp") || lower.ends_with(".ymf") || lower.ends_with(".pso") || lower.ends_with(".rbf")) {
+            const auto stored = reader.storedFile(index);
+            if (!stored) {
+                totals.failures.push_back(archivePath + " : " + entryPath + " : " + stored.error().message);
+                continue;
+            }
+            if (isBinaryMetadata(*stored)) {
+                const auto document = openMetadata(*stored, NameTable());
+                if (!document)
+                    totals.failures.push_back(archivePath + " : " + entryPath + " : " + document.error().message);
+                else if (document->readOnlyReason.empty())
+                    ++totals.metadataExact;
+                else
+                    ++totals.metadataReadOnly;
+            }
+        }
         if (entry.kind == RpfEntryKind::Resource && asciiLower(entry.name).ends_with(".ytd")) {
             const auto textures = readTextureDictionary(*data, rsc7SizeFromFlags(entry.systemFlags), rsc7VersionFromFlags(entry.systemFlags, entry.graphicsFlags));
             if (!textures) {
@@ -99,6 +119,7 @@ void TestRealSweep::readsEveryEntryOfTheInstall()
         static_cast<unsigned long long>(totals.archives), archives.size(),
         static_cast<unsigned long long>(totals.entries), static_cast<unsigned long long>(totals.bytes), totals.failures.size());
     qInfo("texture dictionaries %llu, textures %llu", static_cast<unsigned long long>(totals.dictionaries), static_cast<unsigned long long>(totals.textures));
+    qInfo("binary metadata saved byte-exact %llu, read-only %llu", static_cast<unsigned long long>(totals.metadataExact), static_cast<unsigned long long>(totals.metadataReadOnly));
     for (const std::string &unsupported : totals.unsupportedVersions)
         qInfo("texture dictionary of an unsupported version: %s", unsupported.c_str());
     for (const auto &[format, count] : totals.unknownFormats)

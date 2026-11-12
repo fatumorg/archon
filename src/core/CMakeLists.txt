@@ -16,6 +16,12 @@ add_library(archon-core STATIC
     io/writable_file.cpp
     io/zip_archive.cpp
     io/zip_writer.cpp
+    meta/metadata_document.cpp
+    meta/meta_xml.cpp
+    meta/name_table.cpp
+    meta/pso_file.cpp
+    meta/rbf_file.cpp
+    meta/rsc_meta_file.cpp
     meta/text_file.cpp
     oiv/content_edit.cpp
     oiv/oiv_installer.cpp

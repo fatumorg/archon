@@ -1,5 +1,6 @@
 add_library(archon-test-support STATIC
     core/support/browse_fixture.cpp
+    core/support/meta_samples.cpp
     core/support/real_keys.cpp
     core/support/rpf_builder.cpp
     core/support/test_bytes.cpp
@@ -56,9 +57,10 @@ archon_add_test(tst_texture_pixels core/tst_texture_pixels.cpp)
 archon_add_test(tst_texture_edit core/tst_texture_edit.cpp)
 archon_add_test(tst_oiv_writer core/tst_oiv_writer.cpp)
 archon_add_test(tst_text_file core/tst_text_file.cpp)
+archon_add_test(tst_metadata core/tst_metadata.cpp)
 archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
 
-set_tests_properties(tst_game_setup tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract tst_rpf_writer tst_oiv_installer tst_texture_dictionary PROPERTIES LABELS real)
+set_tests_properties(tst_game_setup tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract tst_rpf_writer tst_oiv_installer tst_texture_dictionary tst_metadata PROPERTIES LABELS real)
 set_tests_properties(tst_oiv_installer PROPERTIES TIMEOUT 3600 ENVIRONMENT QTEST_FUNCTION_TIMEOUT=3600000)
 set_tests_properties(tst_rpf_writer PROPERTIES TIMEOUT 3600 ENVIRONMENT QTEST_FUNCTION_TIMEOUT=3600000)
 set_tests_properties(tst_real_sweep PROPERTIES LABELS sweep TIMEOUT 14400 ENVIRONMENT QTEST_FUNCTION_TIMEOUT=14400000)
