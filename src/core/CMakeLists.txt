@@ -29,6 +29,7 @@ add_library(archon-core STATIC
     search/entry_search.cpp
     ytd/texture_dictionary.cpp
     ytd/texture_format.cpp
+    ytd/texture_pixels.cpp
     version.cpp
 )
 target_include_directories(archon-core PUBLIC ${CMAKE_SOURCE_DIR}/src)
