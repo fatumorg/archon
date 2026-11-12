@@ -77,18 +77,6 @@ std::string floatText(float value)
     return text;
 }
 
-bool looksLikeFloat(std::string_view text)
-{
-    if (text.starts_with("0x") || text.find('.') != std::string_view::npos || text.find('e') != std::string_view::npos || text == "inf" || text == "-inf") {
-        float value = 0;
-        if (text.starts_with("0x"))
-            return text.size() == 10;
-        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
-        return error == std::errc() && end == text.data() + text.size();
-    }
-    return false;
-}
-
 std::optional<float> floatValue(std::string_view text)
 {
     if (text.starts_with("0x")) {
@@ -103,6 +91,12 @@ std::optional<float> floatValue(std::string_view text)
     if (text.empty() || error != std::errc() || end != text.data() + text.size())
         return std::nullopt;
     return value;
+}
+
+bool looksLikeFloat(std::string_view text)
+{
+    const bool marked = text.starts_with("0x") || text.find('.') != std::string_view::npos || text.find('e') != std::string_view::npos || text == "inf" || text == "-inf";
+    return marked && (!text.starts_with("0x") || text.size() == 10) && floatValue(text).has_value();
 }
 
 std::string hexText(std::span<const std::byte> bytes)

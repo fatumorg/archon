@@ -3,6 +3,7 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <cmath>
@@ -21,6 +22,7 @@ constexpr std::size_t maxOutput = std::size_t(1) << 30;
 constexpr std::uint32_t maxCount = 0xFFFF;
 constexpr const char *itemName = "Item";
 constexpr std::string_view nullType = "NULL";
+constexpr std::array<std::string_view, 12> fieldAttributes { "value", "x", "y", "z", "w", "type", "capacity", "count", "length", "flag", "key", "empty" };
 
 std::unexpected<Error> failure(std::string message)
 {
@@ -118,6 +120,10 @@ public:
         : data_(data)
         , names_(names)
     {
+        std::size_t bytes = 0;
+        for (const MetaBlock &block : data.blocks)
+            bytes += block.data.size();
+        nodeBudget_ = std::min(maxNodes, 4 * bytes + 4096);
     }
 
     Result<void> run(pugi::xml_document &document)
@@ -222,7 +228,9 @@ private:
 
     Result<void> readField(const MetaStruct &owner, const MetaField &field, std::size_t block, std::size_t at, pugi::xml_node node, std::size_t depth)
     {
-        if (++nodes_ > maxNodes)
+        if (depth > maxDepth)
+            return failure("the data is nested too deeply");
+        if (++nodes_ > nodeBudget_)
             return failure("the data holds too many values");
         const std::vector<std::byte> &bytes = data_.blocks[block].data;
         if (at + field.size > bytes.size())
@@ -373,7 +381,10 @@ private:
             const MetaField &element = owner.entries[static_cast<std::size_t>(field.element)];
             std::uint64_t count = field.count;
             if (field.type == MetaType::CountedArray) {
-                count = number(block, at + field.count * element.size, 4);
+                const std::size_t countAt = at + std::size_t(field.count) * element.size;
+                if (countAt + 4 > data_.blocks[block].data.size())
+                    return failure("the count of " + names_.name(field.name) + " lies outside its block");
+                count = number(block, countAt, 4);
                 if (count > field.count)
                     return failure(names_.name(field.name) + " counts more items than it holds");
             }
@@ -436,6 +447,7 @@ private:
     const MetaData &data_;
     const NameTable &names_;
     std::size_t nodes_ = 0;
+    std::size_t nodeBudget_ = 0;
 };
 
 class Writer {
@@ -452,6 +464,10 @@ public:
     Result<MetaData> run(const pugi::xml_document &document, std::uint32_t rootType)
     {
         const pugi::xml_node root = document.document_element();
+        for (pugi::xml_node top = document.first_child(); top; top = top.next_sibling()) {
+            if (top.type() == pugi::node_element && top != root)
+                return failure("the document holds more than one root element");
+        }
         if (!root || names_.name(rootType) != root.name())
             return failure("the root element must be <" + names_.name(rootType) + ">");
         const auto found = schema_.structs.find(rootType);
@@ -765,6 +781,10 @@ private:
 
     Result<void> writeField(const MetaStruct &owner, const MetaField &field, std::size_t block, std::size_t offset, pugi::xml_node node)
     {
+        for (const pugi::xml_attribute attribute : node.attributes()) {
+            if (!std::ranges::contains(fieldAttributes, std::string_view(attribute.name())))
+                return at(node, std::string(attribute.name()) + " is not an attribute of a field");
+        }
         switch (field.type) {
         case MetaType::Bool: {
             const auto text = attribute(node, "value");
@@ -902,8 +922,12 @@ private:
                 return checked;
             const bool counted = field.type == MetaType::Array;
             std::size_t count = list.size();
-            if (counted && list.empty() && node.attribute("count"))
-                count = node.attribute("count").as_uint();
+            if (counted && list.empty() && node.attribute("count")) {
+                const auto parsed = integerAttribute<std::uint32_t>(node, "count");
+                if (!parsed)
+                    return std::unexpected(parsed.error());
+                count = *parsed;
+            }
             if (counted && count > maxCount)
                 return at(node, "holds more than 65535 items");
             if (!counted && !list.empty() && list.size() != field.count)
@@ -947,11 +971,15 @@ private:
                 return checked;
             if (list.size() > maxCount)
                 return at(node, "holds more than 65535 entries");
-            const pugi::xml_attribute flag = node.attribute("flag");
-            put(block, offset, flag ? flag.as_uint() : 1, 1);
-            const pugi::xml_attribute capacity = node.attribute("capacity");
+            const auto flag = node.attribute("flag") ? integerAttribute<std::uint8_t>(node, "flag") : Result<std::uint8_t>(1);
+            if (!flag)
+                return std::unexpected(flag.error());
+            const auto capacity = node.attribute("capacity") ? integerAttribute<std::uint16_t>(node, "capacity") : Result<std::uint16_t>(static_cast<std::uint16_t>(list.size()));
+            if (!capacity)
+                return std::unexpected(capacity.error());
+            put(block, offset, *flag, 1);
             put(block, offset + 16, list.size(), 2);
-            put(block, offset + 18, capacity ? capacity.as_uint() : list.size(), 2);
+            put(block, offset + 18, *capacity, 2);
             if (list.empty())
                 return {};
             const auto pair = schema_.structs.find(field.reference);

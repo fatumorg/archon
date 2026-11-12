@@ -240,6 +240,8 @@ private:
             if (!itemField)
                 return std::unexpected(itemField.error());
             field.count = count;
+            if (std::uint64_t(count) * itemField->size + 4 > 0xFFFFFFFF)
+                return failure("an array is larger than a structure can hold");
             if ((entry.subtype & 0x7F) == 1)
                 return simple(MetaType::CountedArray, count * itemField->size + 4, std::max<std::uint32_t>(itemField->align, 4));
             if (entry.subtype == 2 || entry.subtype == 4)
@@ -335,13 +337,13 @@ Result<MetaSchema> readSchema(std::span<const std::byte> psch)
     for (std::uint32_t index = 0; index < count; ++index) {
         const std::uint32_t hash = be32(psch, 12 + index * 8);
         const std::uint32_t at = be32(psch, 16 + index * 8);
-        if (at + 4 > psch.size())
+        if (std::size_t(at) + 4 > psch.size())
             return failure("a type description lies outside the schema section");
         const std::uint32_t head = be32(psch, at);
         if ((head >> 24) == 0) {
             const std::uint32_t entries = head & 0xFFFF;
             std::size_t first = at + 12 + (((head >> 16) & 0xFF) == 1 ? 4 : 0);
-            if (at + 12 > psch.size() || first + entries * std::size_t(12) > psch.size())
+            if (std::size_t(at) + 12 > psch.size() || first + entries * std::size_t(12) > psch.size())
                 return failure("a structure description lies outside the schema section");
             RawStruct type { hash, be32(psch, at + 4), {} };
             for (std::uint32_t entry = 0; entry < entries; ++entry, first += 12) {
@@ -394,12 +396,16 @@ Result<MetaData> readPsoFile(std::span<const std::byte> bytes)
     const std::uint16_t count = be16(pmap->bytes, 12);
     if (16 + count * std::size_t(16) > pmap->bytes.size())
         return failure("the block map counts more blocks than it holds");
+    std::size_t copied = 0;
     for (std::uint16_t index = 0; index < count; ++index) {
         const std::size_t at = 16 + index * std::size_t(16);
         const std::uint32_t offset = be32(pmap->bytes, at + 4);
         const std::uint32_t length = be32(pmap->bytes, at + 12);
         if (offset > psin->bytes.size() || length > psin->bytes.size() - offset)
             return failure("a block lies outside the data section");
+        copied += length;
+        if (copied > psin->bytes.size())
+            return failure("the blocks overlap");
         const auto block = psin->bytes.subspan(offset, length);
         data.blocks.push_back(MetaBlock { be32(pmap->bytes, at), std::vector<std::byte>(block.begin(), block.end()) });
     }

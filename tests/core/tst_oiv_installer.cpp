@@ -330,6 +330,7 @@ void TestOivInstaller::psoEditsARealFile()
     QVERIFY(before->xml.find("value=\"0.325\"") != std::string::npos);
     const auto installed = install(R"(<pso path="data\playerspecialabilities.ymt"><remove xpath="/hash_A042ED3C/hash_6208614E/Item[1]"/></pso>)", {}, InstallTarget::Game);
     QVERIFY2(installed, installed ? "" : installed.error().message.c_str());
+    QVERIFY(std::filesystem::exists(nameTableFile(store_)));
     const auto after = openMetadata(readFile(root_ / "data" / "playerspecialabilities.ymt"), NameTable());
     QVERIFY2(after, after ? "" : after.error().message.c_str());
     QVERIFY(after->readOnlyReason.empty());

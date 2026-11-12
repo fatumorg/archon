@@ -1,4 +1,5 @@
 #include "core/io/ascii.h"
+#include "core/meta/meta_xml.h"
 #include "core/meta/metadata_document.h"
 #include "core/meta/name_table.h"
 #include "core/rpf/rpf_reader.h"
@@ -8,6 +9,7 @@
 #include "support/real_keys.h"
 #include "support/test_bytes.h"
 
+#include <QElapsedTimer>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -25,6 +27,8 @@ private slots:
     void addingAnItemGrowsTheArray();
     void misnamedFieldIsRefusedWithItsLine();
     void hostilePsoIsRefused();
+    void selfReferencingArrayIsRefused();
+    void sharedPointersCannotFanOut();
     void rbfReadsAsXmlAndSavesIdentically();
     void textIsNotBinaryMetadata();
     void realFilesRoundTrip();
@@ -152,6 +156,60 @@ void TestMetadata::misnamedFieldIsRefusedWithItsLine()
     QCOMPARE(missing.error().message, std::string("<csample> on line 2: <label> is missing"));
     QVERIFY(!saveMetadata(samplePso(), replaced(sampleXml, "value=\"2\"", "value=\"two\""), sampleNames()));
     QVERIFY(!saveMetadata(samplePso(), "<csample>", sampleNames()));
+    const auto typo = saveMetadata(samplePso(), replaced(sampleXml, "<fvalue value=\"1.5\" />", "<fvalue valeu=\"3\" value=\"1.5\" />"), sampleNames());
+    QVERIFY(!typo);
+    QCOMPARE(typo.error().message, std::string("<fvalue> on line 3: valeu is not an attribute of a field"));
+    QVERIFY(!saveMetadata(samplePso(), replaced(sampleXml, "</csample>", "</csample>\n<csample />"), sampleNames()));
+}
+
+namespace {
+
+MetaData oneBlock(std::vector<MetaField> fields, std::vector<std::byte> bytes)
+{
+    MetaData data;
+    data.schema.bigEndian = true;
+    MetaStruct type { joaat("s"), static_cast<std::uint32_t>(bytes.size()), 8, std::move(fields), {} };
+    for (std::size_t index = 0; index < type.entries.size(); ++index)
+        type.members.push_back(index);
+    data.schema.structs.emplace(type.name, type);
+    data.blocks.push_back(MetaBlock { type.name, std::move(bytes), false });
+    data.root = 1;
+    return data;
+}
+
+}
+
+void TestMetadata::selfReferencingArrayIsRefused()
+{
+    MetaField array { joaat("f"), MetaType::Array, 0, 16, 8 };
+    array.element = 0;
+    std::vector<std::byte> bytes(16);
+    bytes[3] = std::byte { 1 };
+    bytes[9] = std::byte { 1 };
+    bytes[11] = std::byte { 1 };
+    const auto xml = metaToXml(oneBlock({ array }, bytes), NameTable());
+    QVERIFY(!xml);
+    QCOMPARE(xml.error().message, std::string("the data is nested too deeply"));
+}
+
+void TestMetadata::sharedPointersCannotFanOut()
+{
+    MetaData data = oneBlock({ MetaField { joaat("a"), MetaType::StructPointer, 0, 8, 8 }, MetaField { joaat("b"), MetaType::StructPointer, 8, 8, 8 } }, std::vector<std::byte>(16));
+    data.blocks.clear();
+    for (std::uint8_t index = 1; index <= 40; ++index) {
+        std::vector<std::byte> bytes(16);
+        if (index < 40) {
+            bytes[3] = std::byte { static_cast<std::uint8_t>(index + 1) };
+            bytes[11] = std::byte { static_cast<std::uint8_t>(index + 1) };
+        }
+        data.blocks.push_back(MetaBlock { joaat("s"), std::move(bytes), false });
+    }
+    QElapsedTimer timer;
+    timer.start();
+    const auto xml = metaToXml(data, NameTable());
+    QVERIFY(!xml);
+    QCOMPARE(xml.error().message, std::string("the data holds too many values"));
+    QVERIFY(timer.elapsed() < 2000);
 }
 
 void TestMetadata::hostilePsoIsRefused()

@@ -367,9 +367,13 @@ Result<MetaData> readRscMeta(const RscPages &resource)
     SchemaBuilder builder(std::move(raw));
     if (const auto built = builder.build(data.schema); !built)
         return std::unexpected(built.error());
+    std::uint64_t copied = 0;
     for (std::uint32_t index = 0; index < header.blockCount; ++index) {
         const std::size_t at = *blocks + index * blockInfoSize;
         const std::uint64_t length = pages.value(at + 4, 4);
+        copied += length;
+        if (copied > pages.bytes().size())
+            return failure("the data blocks overlap");
         const auto location = pages.resolve(pages.value(at + 8, 8), length);
         if (!location)
             return failure("a data block lies outside the resource");

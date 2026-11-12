@@ -6,7 +6,7 @@
 
 #include <QMainWindow>
 
-#include <optional>
+#include <memory>
 
 class QAction;
 class QLabel;
@@ -66,7 +66,7 @@ private:
     void openPackage(const QString &file);
     void openTextures(const QString &name);
     void openText(const QString &name);
-    const NameTable &metadataNames();
+    std::shared_ptr<const NameTable> metadataNames();
     Result<std::vector<std::byte>> readEntry(const QString &name);
     Result<void> saveEntry(const QString &name, const std::vector<std::byte> &bytes);
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -74,7 +74,7 @@ private:
     std::filesystem::path root_;
     std::shared_ptr<const Keys> keys_;
     std::filesystem::path store_;
-    std::optional<NameTable> names_;
+    std::shared_ptr<const NameTable> names_;
     GameEdition edition_;
     GameBrowser browser_;
     bool editMode_ = false;

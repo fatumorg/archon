@@ -241,10 +241,15 @@ private:
 
     const NameTable &names()
     {
-        if (!namesLoaded_) {
-            names_.load(namesFile_);
-            namesLoaded_ = true;
+        if (!namesLoaded_ && !names_.load(namesFile_)) {
+            const std::atomic<bool> never = false;
+            if (auto harvested = harvestInstallNames(root_, keys_, never)) {
+                names_ = std::move(*harvested);
+                std::filesystem::create_directories(namesFile_.parent_path());
+                names_.save(namesFile_);
+            }
         }
+        namesLoaded_ = true;
         return names_;
     }
 

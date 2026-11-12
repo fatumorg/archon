@@ -1005,36 +1005,39 @@ void MainWindow::openTextures(const QString &name)
     viewer.exec();
 }
 
-const NameTable &MainWindow::metadataNames()
+std::shared_ptr<const NameTable> MainWindow::metadataNames()
 {
     if (names_)
-        return *names_;
-    NameTable loaded;
-    if (!loaded.load(nameTableFile(store_))) {
-        runBusy(this, tr("Collecting names…"), [&](const std::atomic<bool> &cancel) {
-            if (auto harvested = harvestInstallNames(root_, keys_.get(), cancel)) {
-                std::filesystem::create_directories(store_);
-                harvested->save(nameTableFile(store_));
-                loaded = std::move(*harvested);
-            }
-        });
+        return names_;
+    auto loaded = std::make_shared<NameTable>();
+    if (loaded->load(nameTableFile(store_))) {
+        names_ = loaded;
+        return names_;
     }
-    names_ = std::move(loaded);
-    return *names_;
+    runBusy(this, tr("Collecting names…"), [&](const std::atomic<bool> &cancel) {
+        if (auto harvested = harvestInstallNames(root_, keys_.get(), cancel)) {
+            std::filesystem::create_directories(store_);
+            harvested->save(nameTableFile(store_));
+            *loaded = std::move(*harvested);
+            names_ = loaded;
+        }
+    });
+    return loaded;
 }
 
 void MainWindow::openText(const QString &name)
 {
     const auto file = readEntry(name);
     if (file && isBinaryMetadata(*file)) {
-        const auto document = openMetadata(*file, metadataNames());
+        const auto names = metadataNames();
+        const auto document = openMetadata(*file, *names);
         if (!document) {
             QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(document.error().message));
             return;
         }
         const TextFile xml { QString::fromStdString(document->xml), false, false, false };
-        TextEditor editor(name, xml, editMode_, [this, name, original = *file](const std::vector<std::byte> &bytes) -> Result<void> {
-            const auto saved = saveMetadata(original, std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()), metadataNames());
+        TextEditor editor(name, xml, editMode_, [this, name, names, original = *file](const std::vector<std::byte> &bytes) -> Result<void> {
+            const auto saved = saveMetadata(original, std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()), *names);
             if (!saved)
                 return std::unexpected(saved.error());
             return saveEntry(name, *saved);
