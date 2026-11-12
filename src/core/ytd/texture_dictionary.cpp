@@ -38,6 +38,8 @@ std::uint32_t formatFromDxgi(std::uint32_t dxgi)
 
 std::optional<std::uint32_t> dxgiFromFormat(std::uint32_t format)
 {
+    if ((format & 0x80000000u) != 0 && textureFormat(format))
+        return format & 0xFFu;
     const auto found = std::ranges::find(dxgiFormats, format, &std::pair<std::uint32_t, std::uint32_t>::second);
     return found == dxgiFormats.end() ? std::nullopt : std::optional(found->first);
 }
@@ -193,6 +195,8 @@ Result<std::vector<std::byte>> writeTextureDictionary(std::span<const Texture> i
             return failure(texture.name + " is larger than 65535 pixels or its row is too long to store");
         if (texture.levels == 0 || texture.levels > static_cast<std::uint32_t>(std::bit_width(std::max(texture.width, texture.height))))
             return failure(texture.name + " has more mip levels than its size allows");
+        if (!enhanced && (texture.format & 0x80000000u) != 0)
+            return failure(texture.name + " uses texture format " + std::string(textureFormat(texture.format)->name) + ", which a Legacy texture dictionary cannot hold.");
         if (enhanced && !dxgiFromFormat(texture.format))
             return failure(texture.name + " uses texture format " + std::to_string(texture.format) + ", which ARCHON cannot rewrite.");
         textures.push_back(&texture);

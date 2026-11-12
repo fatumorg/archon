@@ -51,10 +51,28 @@ constexpr std::array<Masks, 7> uncompressed { {
     { 50, luminance, 8, { 0xFF, 0, 0, 0 } },
 } };
 
-constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 10> dxgiFormats { {
-    { 71, dxt1 }, { 72, dxt1 }, { 74, dxt3 }, { 75, dxt3 }, { 77, dxt5 }, { 78, dxt5 },
-    { 80, ati1 }, { 83, ati2 }, { 98, bc7 }, { 99, bc7 },
+constexpr std::uint32_t enhancedOnly = 0x80000000;
+constexpr std::uint32_t r16 = enhancedOnly | 56;
+
+constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 6> dxgiFormats { {
+    { 71, dxt1 }, { 74, dxt3 }, { 77, dxt5 }, { 80, ati1 }, { 83, ati2 }, { 98, bc7 },
 } };
+
+std::uint32_t baseFormat(std::uint32_t format)
+{
+    switch (format) {
+    case enhancedOnly | 72:
+        return dxt1;
+    case enhancedOnly | 75:
+        return dxt3;
+    case enhancedOnly | 78:
+        return dxt5;
+    case enhancedOnly | 99:
+        return bc7;
+    default:
+        return format;
+    }
+}
 
 std::unexpected<Error> failure(std::string message)
 {
@@ -111,7 +129,7 @@ Result<std::vector<std::byte>> decodeRgba(const Texture &texture, std::uint32_t 
             for (std::uint32_t bx = 0; bx < blocksWide; ++bx) {
                 const void *compressed = source.data() + (std::size_t(by) * blocksWide + bx) * blockBytes;
                 block.fill(0);
-                switch (texture.format) {
+                switch (baseFormat(texture.format)) {
                 case dxt1:
                     bcdec_bc1(compressed, block.data(), 16);
                     break;
@@ -167,7 +185,10 @@ Result<std::vector<std::byte>> decodeRgba(const Texture &texture, std::uint32_t 
         for (std::size_t b = 0; b < pixelBytes; ++b)
             value |= std::to_integer<std::uint32_t>(source[index * pixelBytes + b]) << (8 * b);
         std::array<std::uint8_t, 4> out {};
-        if (texture.format == 50) {
+        if (texture.format == r16) {
+            const auto level = static_cast<std::uint8_t>(value >> 8);
+            out = { level, level, level, 255 };
+        } else if (texture.format == 50) {
             out = { static_cast<std::uint8_t>(value), static_cast<std::uint8_t>(value), static_cast<std::uint8_t>(value), 255 };
         } else if (texture.format == 28) {
             out = { 255, 255, 255, static_cast<std::uint8_t>(value) };
@@ -189,7 +210,7 @@ Result<std::vector<std::byte>> writeDds(const Texture &texture)
     const auto size = mipChainSize(texture.format, texture.width, texture.height, texture.levels);
     if (!info || !size || texture.data.size() != *size)
         return failure(texture.name + " uses texture format " + std::to_string(texture.format) + ", which cannot be exported");
-    const bool extended = texture.format == bc7;
+    const bool extended = texture.format == bc7 || (texture.format & enhancedOnly) != 0;
     std::vector<std::byte> dds(extended ? dx10End : headerEnd);
     putWord(dds, 0, ddsMagic);
     putWord(dds, 4, 124);
@@ -202,9 +223,12 @@ Result<std::vector<std::byte>> writeDds(const Texture &texture)
         putWord(dds, 20, textureStride(texture.format, texture.width));
     putWord(dds, 28, texture.levels);
     putWord(dds, 76, 32);
-    if (info && info->block) {
+    if (extended) {
         putWord(dds, 80, fourCcFlag);
-        putWord(dds, 84, extended ? dx10 : texture.format);
+        putWord(dds, 84, dx10);
+    } else if (info && info->block) {
+        putWord(dds, 80, fourCcFlag);
+        putWord(dds, 84, texture.format);
     } else if (const auto masks = std::ranges::find(uncompressed, texture.format, &Masks::format); masks != uncompressed.end()) {
         putWord(dds, 80, masks->flags);
         putWord(dds, 88, masks->bits);
@@ -213,7 +237,7 @@ Result<std::vector<std::byte>> writeDds(const Texture &texture)
     }
     putWord(dds, 108, 0x1000 | (texture.levels > 1 ? 0x400008 : 0));
     if (extended) {
-        putWord(dds, 128, 98);
+        putWord(dds, 128, texture.format == bc7 ? 98 : texture.format & 0xFFu);
         putWord(dds, 132, 3);
         putWord(dds, 140, 1);
     }
@@ -243,6 +267,8 @@ Result<Texture> readDds(std::span<const std::byte> bytes, std::string name)
         dataStart = dx10End;
         if (const auto found = std::ranges::find(dxgiFormats, dxgi, &std::pair<std::uint32_t, std::uint32_t>::first); found != dxgiFormats.end())
             textureFormatCode = found->second;
+        else if (dxgi == 72 || dxgi == 75 || dxgi == 78 || dxgi == 99 || dxgi == 56)
+            textureFormatCode = enhancedOnly | dxgi;
         else if (dxgi == 87 || dxgi == 91)
             textureFormatCode = 21;
         else if (dxgi == 28 || dxgi == 29)

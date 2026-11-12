@@ -23,6 +23,7 @@ struct Totals {
     std::uint64_t dictionaries = 0;
     std::uint64_t textures = 0;
     std::map<std::uint32_t, std::uint64_t> unknownFormats;
+    std::vector<std::string> unsupportedVersions;
     std::vector<std::string> failures;
 };
 
@@ -53,7 +54,11 @@ void walk(const RpfReader &reader, const std::string &archivePath, Totals &total
         if (entry.kind == RpfEntryKind::Resource && asciiLower(entry.name).ends_with(".ytd")) {
             const auto textures = readTextureDictionary(*data, rsc7SizeFromFlags(entry.systemFlags), rsc7VersionFromFlags(entry.systemFlags, entry.graphicsFlags));
             if (!textures) {
-                totals.failures.push_back(archivePath + " : " + entryPath + " : " + textures.error().message);
+                const std::uint32_t version = rsc7VersionFromFlags(entry.systemFlags, entry.graphicsFlags);
+                if (version != legacyDictionaryVersion && version != enhancedDictionaryVersion)
+                    totals.unsupportedVersions.push_back(archivePath + " : " + entryPath + " (version " + std::to_string(version) + ")");
+                else
+                    totals.failures.push_back(archivePath + " : " + entryPath + " : " + textures.error().message);
                 continue;
             }
             ++totals.dictionaries;
@@ -94,6 +99,8 @@ void TestRealSweep::readsEveryEntryOfTheInstall()
         static_cast<unsigned long long>(totals.archives), archives.size(),
         static_cast<unsigned long long>(totals.entries), static_cast<unsigned long long>(totals.bytes), totals.failures.size());
     qInfo("texture dictionaries %llu, textures %llu", static_cast<unsigned long long>(totals.dictionaries), static_cast<unsigned long long>(totals.textures));
+    for (const std::string &unsupported : totals.unsupportedVersions)
+        qInfo("texture dictionary of an unsupported version: %s", unsupported.c_str());
     for (const auto &[format, count] : totals.unknownFormats)
         qInfo("unknown texture format %u: %llu", format, static_cast<unsigned long long>(count));
     for (std::size_t i = 0; i < totals.failures.size() && i < 200; ++i)

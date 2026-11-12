@@ -106,7 +106,7 @@ void TestTexturePixels::swizzlesUncompressedFormats()
 
 void TestTexturePixels::ddsRoundTripsEveryFormat()
 {
-    for (const std::uint32_t format : { 0x31545844u, 0x33545844u, 0x35545844u, 0x31495441u, 0x32495441u, 0x20374342u, 21u, 22u, 23u, 25u, 28u, 32u, 50u }) {
+    for (const std::uint32_t format : { 0x31545844u, 0x33545844u, 0x35545844u, 0x31495441u, 0x32495441u, 0x20374342u, 21u, 22u, 23u, 25u, 28u, 32u, 50u, 0x80000000u | 78, 0x80000000u | 99, 0x80000000u | 72, 0x80000000u | 56 }) {
         const Texture original = filled(format, 64, 16, 5);
         const auto dds = writeDds(original);
         QVERIFY(dds);

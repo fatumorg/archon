@@ -30,6 +30,7 @@ private slots:
     void readsHandBuiltEnhancedDictionary();
     void enhancedWriteThenReadIsIdentity();
     void unknownVersionIsRefused();
+    void enhancedOnlyFormatsRoundTrip();
 };
 
 namespace {
@@ -370,6 +371,26 @@ void TestTextureDictionary::unknownVersionIsRefused()
 {
     QCOMPARE(readTextureDictionary(handBuilt(), 0x2000, 7).error().message, std::string("texture dictionary version 7 is not supported"));
     QVERIFY(!writeTextureDictionary(std::vector<Texture> {}, 7));
+}
+
+void TestTextureDictionary::enhancedOnlyFormatsRoundTrip()
+{
+    const std::uint32_t bc3Srgb = 0x80000000u | 78;
+    const std::uint32_t bc7Srgb = 0x80000000u | 99;
+    const std::uint32_t r16 = 0x80000000u | 56;
+    QCOMPARE(std::string(textureFormat(bc3Srgb)->name), std::string("DXT5 sRGB"));
+    QCOMPARE(*mipChainSize(r16, 4, 4, 1), std::uint64_t(32));
+    const std::vector<Texture> textures { texture("srgb", bc3Srgb, 16, 16, 3, 1), texture("bc7s", bc7Srgb, 8, 8, 2, 2), texture("height", r16, 8, 4, 2, 3) };
+    const auto read = reread(*writeTextureDictionary(textures, 5));
+    QVERIFY(read);
+    for (const Texture &expected : textures) {
+        const auto found = std::ranges::find(*read, expected.name, &Texture::name);
+        QCOMPARE(found->format, expected.format);
+        QVERIFY(found->data == expected.data);
+    }
+    const auto legacy = writeTextureDictionary(textures, 13);
+    QVERIFY(!legacy);
+    QCOMPARE(legacy.error().message, std::string("srgb uses texture format DXT5 sRGB, which a Legacy texture dictionary cannot hold."));
 }
 
 QTEST_APPLESS_MAIN(TestTextureDictionary)

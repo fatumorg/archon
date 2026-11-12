@@ -7,7 +7,7 @@ namespace archon {
 
 namespace {
 
-constexpr std::array<TextureFormatInfo, 13> formats { {
+constexpr std::array<TextureFormatInfo, 18> formats { {
     { 0x31545844, "DXT1", true, 4 },
     { 0x33545844, "DXT3", true, 8 },
     { 0x35545844, "DXT5", true, 8 },
@@ -21,6 +21,11 @@ constexpr std::array<TextureFormatInfo, 13> formats { {
     { 28, "A8", false, 8 },
     { 32, "A8B8G8R8", false, 32 },
     { 50, "L8", false, 8 },
+    { 0x80000048, "DXT1 sRGB", true, 4 },
+    { 0x8000004B, "DXT3 sRGB", true, 8 },
+    { 0x8000004E, "DXT5 sRGB", true, 8 },
+    { 0x80000063, "BC7 sRGB", true, 8 },
+    { 0x80000038, "R16", false, 16 },
 } };
 
 std::uint64_t levelSize(const TextureFormatInfo &info, std::uint32_t width, std::uint32_t height)
