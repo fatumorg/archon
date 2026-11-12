@@ -6,7 +6,7 @@ ARCHON ships no game files and no encryption keys. Keys are derived from your ow
 
 ## Status
 
-Early development. ARCHON browses and edits GTA V Legacy and Enhanced installs: archives and nested archives, texture dictionaries, text and binary metadata, OIV packages, ASI plugins and the Proton prefix. The model preview is not built yet.
+Early development. ARCHON browses and edits GTA V Legacy and Enhanced installs: archives and nested archives, texture dictionaries, models, text and binary metadata, OIV packages, ASI plugins and the Proton prefix.
 
 ## GTA V Enhanced
 
@@ -35,6 +35,10 @@ Tools > Package Creator writes an OIV 2.2 package. The Package tab holds the nam
 Opening a `.ytd` file shows its textures with a preview. Export saves the selected texture or all of them as DDS or PNG. In edit mode the dictionary can be changed: replace or add textures from DDS files (kept in their own format and mipmaps) or from PNG, JPEG, BMP and TGA images (stored as A8R8G8B8 with generated mipmaps), rename and remove textures, then Save. Saving inside an archive outside `mods` asks first, like every other archive edit. ARCHON has no block-compression encoder, so an imported image is stored uncompressed.
 
 Supported formats: DXT1, DXT3, DXT5, ATI1, ATI2, BC7 and the uncompressed A8R8G8B8, X8R8G8B8, A8B8G8R8, R5G6B5, A1R5G5B5, A8 and L8; on Enhanced also the sRGB forms of DXT1, DXT3, DXT5 and BC7, and R16, which a Legacy dictionary cannot hold. Block decoding uses [bcdec](https://github.com/iOrange/bcdec).
+
+## Models
+
+Opening a `.ydr`, `.ydd` or `.yft` file shows its most detailed level in a 3D view (OpenGL 3.3). Drag with the left button to orbit, with the right or middle button to pan, use the wheel to zoom, and double-click to reset the view. A `.ydd` lists its drawables on the left. Diffuse textures come from the model itself, from the `.ytd` of the same name in its folder (for `name_hi` also `name+hi.ytd` and `name.ytd`) and, for vehicles, from `vehshare.ytd`; anything else draws grey, and the status line counts the textures that were not found. A neighbouring `.ytd` that cannot be read is named in a warning before the view opens. The preview shows the model as stored: vehicle wheels, which are separate fragment parts, and textures assigned elsewhere in the game are not drawn. Models are preview only.
 
 ## Package Installer
 

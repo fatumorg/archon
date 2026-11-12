@@ -4,6 +4,7 @@
 
 - GTA V Enhanced: File > Choose game switches between Legacy and Enhanced; Enhanced texture dictionaries, including their sRGB and R16 formats, are read and written.
 - Text editor for `.meta`, `.xml`, `.dat` and other text files, with line numbers; keeps encoding, byte-order mark and line endings when saving.
+- Model viewer for `.ydr`, `.ydd` and `.yft` from Legacy and Enhanced: orbit, pan and zoom, with diffuse textures from the model and its neighbouring `.ytd` files.
 - Binary metadata (PSO, RSC META and RBF: `.ymt`, `.ymf`, `.ymap`, `.ytyp`, `.pso`, `.rbf`) opens as XML in the text editor and saves back to binary; files that do not round-trip byte-exact open read-only. Package Installer runs OIV `pso` commands.
 - Application icon and desktop entry.
 - Main window: navigation tree, file list, address bar, history, filter box.
