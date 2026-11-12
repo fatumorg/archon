@@ -50,6 +50,7 @@ archon_add_test(tst_content_edit core/tst_content_edit.cpp)
 archon_add_test(tst_oiv_installer core/tst_oiv_installer.cpp)
 archon_add_test(tst_texture_dictionary core/tst_texture_dictionary.cpp)
 archon_add_test(tst_texture_pixels core/tst_texture_pixels.cpp)
+archon_add_test(tst_texture_edit core/tst_texture_edit.cpp)
 archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
 
 set_tests_properties(tst_game_setup tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract tst_rpf_writer tst_oiv_installer tst_texture_dictionary PROPERTIES LABELS real)
