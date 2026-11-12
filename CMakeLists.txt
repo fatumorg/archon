@@ -19,6 +19,8 @@ endif()
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg Network Test)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
 
 enable_testing()
 

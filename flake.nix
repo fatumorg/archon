@@ -18,12 +18,14 @@
           pkgs.cmake
           pkgs.ninja
           pkgs.qt6.wrapQtAppsHook
+          pkgs.pkg-config
         ];
         buildInputs = [
           pkgs.qt6.qtbase
           pkgs.qt6.qtsvg
           pkgs.zlib
           pkgs.openssl
+          pkgs.libzip
         ];
         doCheck = true;
         checkPhase = ''
