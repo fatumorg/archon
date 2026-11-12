@@ -1,3 +1,4 @@
+#include "core/drawable/drawable.h"
 #include "core/game/game_install.h"
 #include "core/io/ascii.h"
 #include "core/meta/metadata_document.h"
@@ -23,6 +24,7 @@ struct Totals {
     std::uint64_t bytes = 0;
     std::uint64_t dictionaries = 0;
     std::uint64_t textures = 0;
+    std::uint64_t drawables = 0;
     std::uint64_t metadataExact = 0;
     std::uint64_t metadataReadOnly = 0;
     std::map<std::uint32_t, std::uint64_t> unknownFormats;
@@ -54,6 +56,14 @@ void walk(const RpfReader &reader, const std::string &archivePath, Totals &total
             continue;
         }
         totals.bytes += data->size();
+        if (isDrawableName(entry.name)) {
+            const auto stored = reader.storedFile(index);
+            const auto read = stored ? readDrawables(*stored, entry.name) : Result<std::vector<Drawable>>(std::unexpected(stored.error()));
+            if (read)
+                ++totals.drawables;
+            else
+                totals.failures.push_back(archivePath + " : " + entryPath + " : " + read.error().message);
+        }
         if (isBinaryMetadataName(entry.name)) {
             const auto stored = reader.storedFile(index);
             if (!stored) {
@@ -118,6 +128,7 @@ void TestRealSweep::readsEveryEntryOfTheInstall()
         static_cast<unsigned long long>(totals.archives), archives.size(),
         static_cast<unsigned long long>(totals.entries), static_cast<unsigned long long>(totals.bytes), totals.failures.size());
     qInfo("texture dictionaries %llu, textures %llu", static_cast<unsigned long long>(totals.dictionaries), static_cast<unsigned long long>(totals.textures));
+    qInfo("drawable files read %llu", static_cast<unsigned long long>(totals.drawables));
     qInfo("binary metadata saved byte-exact %llu, read-only %llu", static_cast<unsigned long long>(totals.metadataExact), static_cast<unsigned long long>(totals.metadataReadOnly));
     for (const std::string &unsupported : totals.unsupportedVersions)
         qInfo("texture dictionary of an unsupported version: %s", unsupported.c_str());

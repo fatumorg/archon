@@ -3,6 +3,7 @@
 #include "core/crypto/hash.h"
 #include "core/io/ascii.h"
 #include "core/rsc/resource_file.h"
+#include "core/rsc/resource_pages.h"
 #include "core/ytd/texture_format.h"
 
 #include <algorithm>
@@ -14,8 +15,8 @@ namespace archon {
 namespace {
 
 constexpr char format[] = "ytd";
-constexpr std::uint64_t systemBase = 0x50000000;
-constexpr std::uint64_t graphicsBase = 0x60000000;
+constexpr std::uint64_t systemBase = resourceSystemBase;
+constexpr std::uint64_t graphicsBase = resourceGraphicsBase;
 constexpr std::uint32_t dictionaryVft = 0x40571500;
 constexpr std::uint32_t textureVft = 0x40617568;
 constexpr std::uint32_t enhancedDictionaryVft = 0x4068c308;
@@ -61,62 +62,6 @@ std::unexpected<Error> failure(std::string message, std::uint64_t offset = 0)
     return std::unexpected(Error { format, offset, std::move(message) });
 }
 
-class Pages {
-public:
-    Pages(std::span<const std::byte> pages, std::uint64_t systemSize)
-        : pages_(pages)
-        , systemSize_(std::min<std::uint64_t>(systemSize, pages.size()))
-    {
-    }
-
-    std::uint64_t value(std::uint64_t offset, int size) const
-    {
-        std::uint64_t result = 0;
-        for (int i = 0; i < size; ++i)
-            result |= std::to_integer<std::uint64_t>(pages_[offset + i]) << (8 * i);
-        return result;
-    }
-
-    std::optional<std::uint64_t> system(std::uint64_t pointer, std::uint64_t length) const
-    {
-        if (pointer < systemBase || pointer - systemBase > systemSize_ || length > systemSize_ - (pointer - systemBase))
-            return std::nullopt;
-        return pointer - systemBase;
-    }
-
-    std::optional<std::uint64_t> graphics(std::uint64_t pointer, std::uint64_t length) const
-    {
-        const std::uint64_t size = pages_.size() - systemSize_;
-        if (pointer < graphicsBase || pointer - graphicsBase > size || length > size - (pointer - graphicsBase))
-            return std::nullopt;
-        return systemSize_ + (pointer - graphicsBase);
-    }
-
-    std::optional<std::string> string(std::uint64_t pointer) const
-    {
-        const auto start = system(pointer, 1);
-        if (!start)
-            return std::nullopt;
-        std::string text;
-        for (std::uint64_t offset = *start; offset < systemSize_ && text.size() <= maxNameLength; ++offset) {
-            const char c = static_cast<char>(pages_[offset]);
-            if (c == '\0')
-                return text;
-            text += c;
-        }
-        return std::nullopt;
-    }
-
-    std::span<const std::byte> bytes(std::uint64_t offset, std::uint64_t length) const
-    {
-        return pages_.subspan(offset, length);
-    }
-
-private:
-    std::span<const std::byte> pages_;
-    std::uint64_t systemSize_;
-};
-
 void put(std::vector<std::byte> &bytes, std::size_t offset, std::uint64_t value, int size)
 {
     for (int i = 0; i < size; ++i)
@@ -136,20 +81,20 @@ std::uint32_t textureNameHash(std::string_view name)
     return jenkinsHash(std::as_bytes(std::span(lower.data(), lower.size())));
 }
 
-Result<std::vector<Texture>> readTextureDictionary(std::span<const std::byte> bytes, std::uint64_t systemSize, std::uint32_t version)
+Result<std::vector<Texture>> readTextureDictionary(std::span<const std::byte> bytes, std::uint64_t systemSize, std::uint32_t version, std::uint64_t root)
 {
     if (version != legacyDictionaryVersion && version != enhancedDictionaryVersion)
         return failure("texture dictionary version " + std::to_string(version) + " is not supported");
     const bool enhanced = version == enhancedDictionaryVersion;
-    const Pages pages(bytes, systemSize);
-    if (systemSize < dictionarySize || bytes.size() < dictionarySize)
+    const ResourcePages pages(bytes, systemSize);
+    if (!pages.system(resourceSystemBase + root, dictionarySize))
         return failure("the texture dictionary is truncated");
-    const std::uint64_t count = pages.value(0x38, 2);
+    const std::uint64_t count = pages.value(root + 0x38, 2);
     if (count == 0)
         return std::vector<Texture>();
-    const auto list = pages.system(pages.value(0x30, 8), count * 8);
+    const auto list = pages.system(pages.value(root + 0x30, 8), count * 8);
     if (!list)
-        return failure("the texture list lies outside the resource", 0x30);
+        return failure("the texture list lies outside the resource", root + 0x30);
     std::vector<Texture> textures;
     textures.reserve(static_cast<std::size_t>(count));
     for (std::uint64_t index = 0; index < count; ++index) {
@@ -157,7 +102,7 @@ Result<std::vector<Texture>> readTextureDictionary(std::span<const std::byte> by
         if (!at)
             return failure("a texture lies outside the resource", *list + index * 8);
         const std::uint64_t t = *at;
-        const auto name = pages.string(pages.value(t + 0x28, 8));
+        const auto name = pages.string(pages.value(t + 0x28, 8), maxNameLength);
         if (!name || name->empty())
             return failure("a texture name lies outside the resource", t + 0x28);
         Texture texture = enhanced

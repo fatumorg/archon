@@ -13,6 +13,7 @@ add_library(archon-core STATIC
     prefix/prefix.cpp
     io/byte_reader.cpp
     io/path_resolver.cpp
+    drawable/drawable.cpp
     io/writable_file.cpp
     io/zip_archive.cpp
     io/zip_writer.cpp
