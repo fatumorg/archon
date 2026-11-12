@@ -5,6 +5,7 @@
 #include "app/busy.h"
 #include "app/display_format.h"
 #include "app/history_dialog.h"
+#include "app/package_installer_dialog.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
 #include "core/io/ascii.h"
@@ -304,6 +305,13 @@ void MainWindow::buildActions()
     historyAction_ = new QAction(tr("Change &history…"), this);
     connect(historyAction_, &QAction::triggered, this, &MainWindow::openHistory);
 
+    packageInstallerAction_ = new QAction(loadIcon(QStringLiteral("package")), tr("&Package Installer…"), this);
+    connect(packageInstallerAction_, &QAction::triggered, this, [this] {
+        const QString file = QFileDialog::getOpenFileName(this, tr("Open package"), QString(), tr("OIV packages (*.oiv)"));
+        if (!file.isEmpty())
+            openPackage(file);
+    });
+
     asiManagerAction_ = new QAction(loadIcon(QStringLiteral("asi")), tr("&ASI Manager…"), this);
     connect(asiManagerAction_, &QAction::triggered, this, [this] {
         AsiManagerDialog dialog(root_, edition_, store_, this);
@@ -386,6 +394,7 @@ void MainWindow::buildNavigationRow()
     view->addAction(refreshAction_);
     QMenu *tools = menus->addMenu(tr("&Tools"));
     tools->addAction(searchAction_);
+    tools->addAction(packageInstallerAction_);
     tools->addAction(asiManagerAction_);
     tools->addAction(historyAction_);
     QMenu *help = menus->addMenu(tr("&Help"));
@@ -410,6 +419,7 @@ void MainWindow::buildNavigationRow()
     bar->addAction(deleteAction_);
     bar->addAction(rebuildAction_);
     bar->addSeparator();
+    bar->addAction(packageInstallerAction_);
     bar->addAction(asiManagerAction_);
     setContextMenuPolicy(Qt::NoContextMenu);
 }
@@ -571,8 +581,14 @@ void MainWindow::activate(QTreeWidgetItem *item)
     if (item == nullptr)
         return;
     const BrowserNode &node = nodes_[static_cast<std::size_t>(item->data(0, nodeRole).toInt())];
-    if (node.kind != NodeKind::File)
+    if (node.kind != NodeKind::File) {
         navigate(childPath(QString::fromStdString(node.name)));
+        return;
+    }
+    if (!node.inArchive && QString::fromStdString(node.name).endsWith(QLatin1StringView(".oiv"), Qt::CaseInsensitive)) {
+        if (const auto target = browser_.locate(childPath(QString::fromStdString(node.name)).toStdString(), false))
+            openPackage(QString::fromStdString(target->disk.string()));
+    }
 }
 
 QString MainWindow::childPath(const QString &name) const
@@ -880,6 +896,17 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         return true;
     }
     return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::openPackage(const QString &file)
+{
+    PackageInstallerDialog dialog(file.toStdString(), root_, keys_, store_, this);
+    if (!dialog.isValid()) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), dialog.errorText());
+        return;
+    }
+    dialog.exec();
+    reload();
 }
 
 }

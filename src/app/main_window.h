@@ -57,6 +57,7 @@ private:
     void reload();
     void copySelectionToMods();
     void openHistory();
+    void openPackage(const QString &file);
     bool eventFilter(QObject *watched, QEvent *event) override;
 
     std::filesystem::path root_;
@@ -98,6 +99,7 @@ private:
     QAction *rebuildAction_ = nullptr;
     QAction *historyAction_ = nullptr;
     QAction *asiManagerAction_ = nullptr;
+    QAction *packageInstallerAction_ = nullptr;
 };
 
 }

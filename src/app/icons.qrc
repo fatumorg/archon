@@ -15,5 +15,6 @@
         <file>icons/delete.svg</file>
         <file>icons/rebuild.svg</file>
         <file>icons/asi.svg</file>
+        <file>icons/package.svg</file>
     </qresource>
 </RCC>

@@ -9,6 +9,7 @@
 #include "core/safety/transaction.h"
 #include "support/browse_fixture.h"
 #include "support/modal_driver.h"
+#include "support/zip_builder.h"
 #include "support/temp_files.h"
 
 #include <QAction>
@@ -115,6 +116,7 @@ private slots:
     void styledMessageBoxButtonsFitTheirText();
     void uncancellableWorkShowsNoCancelButton();
     void asiManagerOpensFromTools();
+    void activatingOivOpensPackageInstaller();
 
 private:
     void turnOnEditMode()
@@ -390,7 +392,7 @@ void TestMainWindow::actionsAreExactlyTheWorkingSet()
     texts.removeDuplicates();
     texts.sort();
     QStringList expected { "E&xit", "Extract…", "Open", "Select &all", "&Refresh", "&Up one level", "&Back", "&Forward", "&Search…", "&About ARCHON",
-        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…", "&ASI Manager…" };
+        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…", "&ASI Manager…", "&Package Installer…" };
     expected.sort();
     QCOMPARE(texts, expected);
 }
@@ -708,6 +710,37 @@ void TestMainWindow::asiManagerOpensFromTools()
     QVERIFY(driver.done());
     QCOMPARE(titles, QStringList { QStringLiteral("ASI Manager") });
     QVERIFY(window_->findChild<QToolBar *>()->actions().contains(actionNamed(window_.get(), QStringLiteral("&ASI Manager…"))));
+}
+
+void TestMainWindow::activatingOivOpensPackageInstaller()
+{
+    const std::string assembly = "<package version=\"2.2\" id=\"{1}\" target=\"Five\"><metadata><name>Listed</name><version><major>1</major><minor>0</minor></version><author><displayName>A</displayName></author><description>d</description></metadata><colors/><content/></package>";
+    writeFile(root_ / "mod.oiv", makeZip({ { "assembly.xml", assembly } }));
+    writeFile(root_ / "broken.oiv", "not a zip");
+    QVERIFY(window_->navigate(QStringLiteral("update")));
+    QVERIFY(window_->navigate(QString()));
+    QStringList titles;
+    QTimer probe;
+    probe.setInterval(20);
+    connect(&probe, &QTimer::timeout, this, [&titles] {
+        if (QWidget *modal = QApplication::activeModalWidget(); modal != nullptr && !titles.contains(modal->windowTitle()))
+            titles.append(modal->windowTitle());
+    });
+    probe.start();
+    {
+        ModalDriver driver({ QStringLiteral("Close") });
+        emit list_->itemActivated(row(list_, QStringLiteral("mod.oiv")), 0);
+        QVERIFY(driver.done());
+    }
+    QCOMPARE(titles, QStringList { QStringLiteral("Package Installer") });
+    {
+        ModalDriver driver({ QStringLiteral("OK") });
+        emit list_->itemActivated(row(list_, QStringLiteral("broken.oiv")), 0);
+        QVERIFY(driver.done());
+        QCOMPARE(driver.seen.size(), 1);
+        QVERIFY(driver.seen.first().startsWith(QStringLiteral("This file is not an OIV package")));
+    }
+    QVERIFY(window_->findChild<QToolBar *>()->actions().contains(actionNamed(window_.get(), QStringLiteral("&Package Installer…"))));
 }
 
 QTEST_MAIN(TestMainWindow)

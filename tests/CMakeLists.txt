@@ -25,6 +25,7 @@ archon_add_app_test(tst_main_window app/tst_main_window.cpp)
 archon_add_app_test(tst_display_format app/tst_display_format.cpp)
 archon_add_app_test(tst_game_setup app/tst_game_setup.cpp)
 archon_add_app_test(tst_asi_dialogs app/tst_asi_dialogs.cpp)
+archon_add_app_test(tst_package_installer app/tst_package_installer.cpp)
 
 archon_add_test(tst_byte_reader core/tst_byte_reader.cpp)
 archon_add_test(tst_crypto_primitives core/tst_crypto_primitives.cpp)
