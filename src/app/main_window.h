@@ -58,6 +58,7 @@ private:
     void copySelectionToMods();
     void openHistory();
     void openPackage(const QString &file);
+    void openTextures(const QString &name);
     bool eventFilter(QObject *watched, QEvent *event) override;
 
     std::filesystem::path root_;

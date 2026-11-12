@@ -22,6 +22,7 @@ private slots:
     void writeThenReadIsIdentity();
     void writesSortedByHash();
     void hostileDictionariesAreRefused();
+    void emptyDictionaryHasNoTextures();
     void unknownFormatIsNotWritten();
     void resourceFileFlagsHoldPages();
     void realDictionariesRoundTrip();
@@ -187,6 +188,21 @@ void TestTextureDictionary::hostileDictionariesAreRefused()
     put(pages, 0x9D, 40, 1);
     QVERIFY(!readTextureDictionary(pages, 0x2000));
     QVERIFY(!readTextureDictionary(std::vector<std::byte>(0x10), 0x10));
+}
+
+void TestTextureDictionary::emptyDictionaryHasNoTextures()
+{
+    std::vector<std::byte> pages(0x2000);
+    put(pages, 0x00, 0x405713f0, 4);
+    put(pages, 0x04, 1, 4);
+    put(pages, 0x08, 0x50000040, 8);
+    put(pages, 0x18, 1, 4);
+    const auto textures = readTextureDictionary(pages, 0x2000);
+    QVERIFY2(textures, textures ? "" : textures.error().message.c_str());
+    QVERIFY(textures->empty());
+    const auto written = writeTextureDictionary(*textures);
+    QVERIFY(written);
+    QVERIFY(reread(*written)->empty());
 }
 
 void TestTextureDictionary::unknownFormatIsNotWritten()

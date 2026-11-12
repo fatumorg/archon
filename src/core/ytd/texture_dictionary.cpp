@@ -110,6 +110,8 @@ Result<std::vector<Texture>> readTextureDictionary(std::span<const std::byte> by
     if (systemSize < dictionarySize || bytes.size() < dictionarySize)
         return failure("the texture dictionary is truncated");
     const std::uint64_t count = pages.value(0x38, 2);
+    if (count == 0)
+        return std::vector<Texture>();
     const auto list = pages.system(pages.value(0x30, 8), count * 8);
     if (!list)
         return failure("the texture list lies outside the resource", 0x30);

@@ -1,10 +1,16 @@
 #include "app/address_bar.h"
 #include "app/busy.h"
 #include "app/history_dialog.h"
+#include "app/texture_viewer.h"
 #include "app/main_window.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
 #include "core/game/game_browser.h"
+#include "core/rsc/resource_file.h"
+#include "core/rsc/rsc7.h"
+#include "core/ytd/texture_pixels.h"
+#include "support/rpf_builder.h"
+#include "support/test_bytes.h"
 #include "core/rpf/rpf_reader.h"
 #include "core/safety/transaction.h"
 #include "support/browse_fixture.h"
@@ -117,6 +123,7 @@ private slots:
     void uncancellableWorkShowsNoCancelButton();
     void asiManagerOpensFromTools();
     void activatingOivOpensPackageInstaller();
+    void texturesOpenEditAndSave();
 
 private:
     void turnOnEditMode()
@@ -741,6 +748,54 @@ void TestMainWindow::activatingOivOpensPackageInstaller()
         QVERIFY(driver.seen.first().startsWith(QStringLiteral("This file is not an OIV package")));
     }
     QVERIFY(window_->findChild<QToolBar *>()->actions().contains(actionNamed(window_.get(), QStringLiteral("&Package Installer…"))));
+}
+
+void TestMainWindow::texturesOpenEditAndSave()
+{
+    const std::vector<Texture> textures { rgbaTexture("paint", 4, 4, std::vector<std::byte>(64, std::byte { 9 })) };
+    const auto ytd = writeTextureDictionary(textures).value();
+    const auto header = parseRsc7Header(std::span(ytd).first(16)).value();
+    RpfBuilder archive;
+    archive.addBinary("data/a.txt", toVector("hello"), false);
+    archive.addResourceBody("cars.ytd", std::vector<std::byte>(ytd.begin() + 16, ytd.end()), header.systemFlags, header.graphicsFlags);
+    writeFile(root_ / "mods" / "cars.rpf", archive.build());
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("mods/cars.rpf")));
+
+    QStringList seen;
+    QStringList boxes;
+    QTimer driver;
+    driver.setInterval(20);
+    connect(&driver, &QTimer::timeout, this, [&seen, &boxes] {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            boxes.append(box->text());
+            QTimer::singleShot(0, box, &QWidget::close);
+            return;
+        }
+        auto *viewer = qobject_cast<TextureViewer *>(QApplication::activeModalWidget());
+        if (viewer == nullptr || seen.contains(viewer->windowTitle()))
+            return;
+        seen.append(viewer->windowTitle());
+        QTimer::singleShot(0, viewer, [viewer] {
+            viewer->renameSelected(QStringLiteral("repainted"));
+            viewer->save();
+            viewer->accept();
+        });
+    });
+    driver.start();
+    emit list_->itemActivated(row(list_, QStringLiteral("cars.ytd")), 0);
+    QCOMPARE(seen, QStringList { QStringLiteral("cars.ytd - Texture Dictionary") });
+    QVERIFY2(boxes.isEmpty(), qPrintable(boxes.join(QLatin1Char('\n'))));
+
+    const auto reader = RpfReader::open(openFileSource(root_ / "mods" / "cars.rpf"), "cars.rpf", nullptr);
+    QVERIFY(reader);
+    const auto index = reader->archive().find("cars.ytd");
+    QVERIFY(index);
+    const RpfEntry &entry = reader->archive().entries()[*index];
+    const auto read = readTextureDictionary(*reader->fileData(*index), rsc7SizeFromFlags(entry.systemFlags));
+    QVERIFY(read);
+    QCOMPARE(read->front().name, std::string("repainted"));
+    QCOMPARE(listTransactions(store_).front().description, std::string("Replace mods/cars.rpf/cars.ytd"));
 }
 
 QTEST_MAIN(TestMainWindow)

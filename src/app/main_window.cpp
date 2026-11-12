@@ -8,7 +8,10 @@
 #include "app/package_installer_dialog.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
+#include "app/texture_viewer.h"
 #include "core/io/ascii.h"
+#include "core/rsc/resource_file.h"
+#include "core/rsc/rsc7.h"
 #include "core/search/entry_search.h"
 #include "core/version.h"
 
@@ -28,6 +31,7 @@
 #include <QMessageBox>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QTemporaryDir>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QToolButton>
@@ -585,6 +589,10 @@ void MainWindow::activate(QTreeWidgetItem *item)
         navigate(childPath(QString::fromStdString(node.name)));
         return;
     }
+    if (QString::fromStdString(node.name).endsWith(QLatin1StringView(".ytd"), Qt::CaseInsensitive)) {
+        openTextures(QString::fromStdString(node.name));
+        return;
+    }
     if (!node.inArchive && QString::fromStdString(node.name).endsWith(QLatin1StringView(".oiv"), Qt::CaseInsensitive)) {
         if (const auto target = browser_.locate(childPath(QString::fromStdString(node.name)).toStdString(), false))
             openPackage(QString::fromStdString(target->disk.string()));
@@ -907,6 +915,49 @@ void MainWindow::openPackage(const QString &file)
     }
     dialog.exec();
     reload();
+}
+
+void MainWindow::openTextures(const QString &name)
+{
+    QTemporaryDir scratch;
+    const auto extracted = scratch.isValid() ? browser_.extract(childPath(name).toStdString(), scratch.path().toStdString()) : Result<ExtractSummary>(std::unexpected(Error { "ytd", 0, "cannot create a temporary folder" }));
+    std::vector<std::byte> file;
+    if (extracted) {
+        QFile in(QDir(scratch.path()).filePath(name));
+        if (in.open(QIODevice::ReadOnly)) {
+            const QByteArray content = in.readAll();
+            const auto bytes = std::as_bytes(std::span(content.constData(), static_cast<std::size_t>(content.size())));
+            file.assign(bytes.begin(), bytes.end());
+        }
+    }
+    Result<std::vector<Texture>> textures = std::unexpected(Error { "ytd", 0, extracted ? name.toStdString() + " cannot be read" : extracted.error().message });
+    if (file.size() >= 16) {
+        const auto header = parseRsc7Header(std::span(file).first(16));
+        const auto pages = inflateResource(file);
+        if (header && pages)
+            textures = readTextureDictionary(*pages, rsc7SizeFromFlags(header->systemFlags));
+        else
+            textures = std::unexpected(header ? pages.error() : header.error());
+    }
+    if (!textures) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(textures.error().message));
+        return;
+    }
+    TextureViewer viewer(name, std::move(*textures), editMode_, [this, name](const std::vector<std::byte> &bytes) -> Result<void> {
+        QTemporaryDir out;
+        const QString path = QDir(out.path()).filePath(name);
+        QFile written(path);
+        if (!out.isValid() || !written.open(QIODevice::WriteOnly) || written.write(reinterpret_cast<const char *>(bytes.data()), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size()))
+            return std::unexpected(Error { "ytd", 0, "cannot write a temporary file" });
+        written.close();
+        if (!prepareArchiveEdit())
+            return std::unexpected(Error { "ytd", 0, std::string() });
+        const std::string target = childPath(name).toStdString();
+        if (!runEdit(tr("Saving textures…"), [&](GameEditor &editor) { return editor.replace(target, path.toStdString()); }))
+            return std::unexpected(Error { "ytd", 0, std::string() });
+        return {};
+    }, this);
+    viewer.exec();
 }
 
 }
