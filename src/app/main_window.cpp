@@ -10,8 +10,10 @@
 #include "app/package_installer_dialog.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
+#include "app/text_editor.h"
 #include "app/texture_viewer.h"
 #include "core/io/ascii.h"
+#include "core/meta/text_file.h"
 #include "core/rsc/resource_file.h"
 #include "core/rsc/rsc7.h"
 #include "core/search/entry_search.h"
@@ -614,6 +616,10 @@ void MainWindow::activate(QTreeWidgetItem *item)
         openTextures(QString::fromStdString(node.name));
         return;
     }
+    if (isTextMetadataName(node.name)) {
+        openText(QString::fromStdString(node.name));
+        return;
+    }
     if (!node.inArchive && QString::fromStdString(node.name).endsWith(QLatin1StringView(".oiv"), Qt::CaseInsensitive)) {
         if (const auto target = browser_.locate(childPath(QString::fromStdString(node.name)).toStdString(), false))
             openPackage(QString::fromStdString(target->disk.string()));
@@ -938,24 +944,46 @@ void MainWindow::openPackage(const QString &file)
     reload();
 }
 
-void MainWindow::openTextures(const QString &name)
+Result<std::vector<std::byte>> MainWindow::readEntry(const QString &name)
 {
     QTemporaryDir scratch;
-    const auto extracted = scratch.isValid() ? browser_.extract(childPath(name).toStdString(), scratch.path().toStdString()) : Result<ExtractSummary>(std::unexpected(Error { "ytd", 0, "cannot create a temporary folder" }));
-    std::vector<std::byte> file;
-    if (extracted) {
-        QFile in(QDir(scratch.path()).filePath(name));
-        if (in.open(QIODevice::ReadOnly)) {
-            const QByteArray content = in.readAll();
-            const auto bytes = std::as_bytes(std::span(content.constData(), static_cast<std::size_t>(content.size())));
-            file.assign(bytes.begin(), bytes.end());
-        }
-    }
-    Result<std::vector<Texture>> textures = std::unexpected(Error { "ytd", 0, extracted ? name.toStdString() + " cannot be read" : extracted.error().message });
+    if (!scratch.isValid())
+        return std::unexpected(Error { "read", 0, "cannot create a temporary folder" });
+    const auto extracted = browser_.extract(childPath(name).toStdString(), scratch.path().toStdString());
+    if (!extracted)
+        return std::unexpected(extracted.error());
+    QFile in(QDir(scratch.path()).filePath(name));
+    if (!in.open(QIODevice::ReadOnly))
+        return std::unexpected(Error { "read", 0, name.toStdString() + " cannot be read" });
+    const QByteArray content = in.readAll();
+    const auto bytes = std::as_bytes(std::span(content.constData(), static_cast<std::size_t>(content.size())));
+    return std::vector<std::byte>(bytes.begin(), bytes.end());
+}
+
+Result<void> MainWindow::saveEntry(const QString &name, const std::vector<std::byte> &bytes)
+{
+    QTemporaryDir out;
+    const QString path = QDir(out.path()).filePath(name);
+    QFile written(path);
+    if (!out.isValid() || !written.open(QIODevice::WriteOnly) || written.write(reinterpret_cast<const char *>(bytes.data()), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size()))
+        return std::unexpected(Error { "save", 0, "cannot write a temporary file" });
+    written.close();
+    if (!prepareArchiveEdit())
+        return std::unexpected(Error { "save", 0, std::string() });
+    const std::string target = childPath(name).toStdString();
+    if (!runEdit(tr("Saving…"), [&](GameEditor &editor) { return editor.replace(target, path.toStdString()); }))
+        return std::unexpected(Error { "save", 0, std::string() });
+    return {};
+}
+
+void MainWindow::openTextures(const QString &name)
+{
+    const auto file = readEntry(name);
+    Result<std::vector<Texture>> textures = std::unexpected(file ? Error { "ytd", 0, name.toStdString() + " cannot be read" } : file.error());
     std::uint32_t version = legacyDictionaryVersion;
-    if (file.size() >= 16) {
-        const auto header = parseRsc7Header(std::span(file).first(16));
-        const auto pages = inflateResource(file);
+    if (file && file->size() >= 16) {
+        const auto header = parseRsc7Header(std::span(*file).first(16));
+        const auto pages = inflateResource(*file);
         if (header)
             version = header->version;
         if (header && pages)
@@ -967,21 +995,20 @@ void MainWindow::openTextures(const QString &name)
         QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(textures.error().message));
         return;
     }
-    TextureViewer viewer(name, std::move(*textures), editMode_, [this, name](const std::vector<std::byte> &bytes) -> Result<void> {
-        QTemporaryDir out;
-        const QString path = QDir(out.path()).filePath(name);
-        QFile written(path);
-        if (!out.isValid() || !written.open(QIODevice::WriteOnly) || written.write(reinterpret_cast<const char *>(bytes.data()), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size()))
-            return std::unexpected(Error { "ytd", 0, "cannot write a temporary file" });
-        written.close();
-        if (!prepareArchiveEdit())
-            return std::unexpected(Error { "ytd", 0, std::string() });
-        const std::string target = childPath(name).toStdString();
-        if (!runEdit(tr("Saving textures…"), [&](GameEditor &editor) { return editor.replace(target, path.toStdString()); }))
-            return std::unexpected(Error { "ytd", 0, std::string() });
-        return {};
-    }, version, this);
+    TextureViewer viewer(name, std::move(*textures), editMode_, [this, name](const std::vector<std::byte> &bytes) { return saveEntry(name, bytes); }, version, this);
     viewer.exec();
+}
+
+void MainWindow::openText(const QString &name)
+{
+    const auto file = readEntry(name);
+    const auto text = file ? decodeTextFile(*file, name.toStdString()) : Result<TextFile>(std::unexpected(file.error()));
+    if (!text) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(text.error().message));
+        return;
+    }
+    TextEditor editor(name, *text, editMode_, [this, name](const std::vector<std::byte> &bytes) { return saveEntry(name, bytes); }, this);
+    editor.exec();
 }
 
 }

@@ -12,6 +12,7 @@ add_library(archon-app STATIC
     prefix_setup_dialog.cpp
     search_dialog.cpp
     style.cpp
+    text_editor.cpp
     texture_viewer.cpp
 )
 target_link_libraries(archon-app PUBLIC archon-core Qt6::Widgets Qt6::Svg Qt6::Network)

@@ -1,6 +1,7 @@
 #include "app/address_bar.h"
 #include "app/busy.h"
 #include "app/history_dialog.h"
+#include "app/text_editor.h"
 #include "app/texture_viewer.h"
 #include "app/main_window.h"
 #include "app/search_dialog.h"
@@ -24,6 +25,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QSignalSpy>
@@ -125,6 +127,7 @@ private slots:
     void activatingOivOpensPackageInstaller();
     void texturesOpenEditAndSave();
     void editionIsShownAndGameChoiceCanBeCancelled();
+    void textMetadataOpensEditsAndSaves();
 
 private:
     void turnOnEditMode()
@@ -206,7 +209,7 @@ void TestMainWindow::navigatesByActivationAndHistory()
     emit list_->itemActivated(row(list_, QStringLiteral("data")), 0);
     QCOMPARE(window_->currentPath(), QStringLiteral("common.rpf/data"));
 
-    emit list_->itemActivated(row(list_, QStringLiteral("a.txt")), 0);
+    emit list_->itemActivated(row(list_, QStringLiteral("b.bin")), 0);
     QCOMPARE(window_->currentPath(), QStringLiteral("common.rpf/data"));
 
     back->click();
@@ -815,6 +818,39 @@ void TestMainWindow::editionIsShownAndGameChoiceCanBeCancelled()
     QVERIFY(driver.done());
     QCOMPARE(requested.size(), 0);
     QVERIFY(window_->isVisible());
+}
+
+void TestMainWindow::textMetadataOpensEditsAndSaves()
+{
+    copyToMods();
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("mods/common.rpf/data")));
+    QStringList seen;
+    QStringList boxes;
+    QTimer driver;
+    driver.setInterval(20);
+    connect(&driver, &QTimer::timeout, this, [&seen, &boxes] {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            boxes.append(box->text());
+            QTimer::singleShot(0, box, &QWidget::close);
+            return;
+        }
+        auto *editor = qobject_cast<TextEditor *>(QApplication::activeModalWidget());
+        if (editor == nullptr || !seen.isEmpty())
+            return;
+        seen.append(editor->windowTitle());
+        QTimer::singleShot(0, editor, [editor] {
+            editor->findChild<QPlainTextEdit *>(QStringLiteral("textEdit"))->setPlainText(QStringLiteral("edited"));
+            editor->save();
+            editor->accept();
+        });
+    });
+    driver.start();
+    emit list_->itemActivated(row(list_, QStringLiteral("a.txt")), 0);
+    QCOMPARE(seen.size(), 1);
+    QVERIFY(seen.first().startsWith(QStringLiteral("a.txt - ARCHON")));
+    QVERIFY2(boxes.isEmpty(), qPrintable(boxes.join(QLatin1Char('\n'))));
+    QCOMPARE(entryText(root_ / "mods" / "common.rpf", "data/a.txt"), std::string("edited"));
 }
 
 QTEST_MAIN(TestMainWindow)

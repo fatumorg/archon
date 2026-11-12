@@ -62,6 +62,9 @@ private:
     void openHistory();
     void openPackage(const QString &file);
     void openTextures(const QString &name);
+    void openText(const QString &name);
+    Result<std::vector<std::byte>> readEntry(const QString &name);
+    Result<void> saveEntry(const QString &name, const std::vector<std::byte> &bytes);
     bool eventFilter(QObject *watched, QEvent *event) override;
 
     std::filesystem::path root_;
