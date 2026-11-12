@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 
 namespace archon {
@@ -182,9 +183,12 @@ Result<std::vector<std::byte>> decodeRgba(const Texture &texture, std::uint32_t 
     return rgba;
 }
 
-std::vector<std::byte> writeDds(const Texture &texture)
+Result<std::vector<std::byte>> writeDds(const Texture &texture)
 {
     const auto info = textureFormat(texture.format);
+    const auto size = mipChainSize(texture.format, texture.width, texture.height, texture.levels);
+    if (!info || !size || texture.data.size() != *size)
+        return failure(texture.name + " uses texture format " + std::to_string(texture.format) + ", which cannot be exported");
     const bool extended = texture.format == bc7;
     std::vector<std::byte> dds(extended ? dx10End : headerEnd);
     putWord(dds, 0, ddsMagic);
@@ -226,7 +230,7 @@ Result<Texture> readDds(std::span<const std::byte> bytes, std::string name)
     const std::uint32_t levels = std::max(1u, word(bytes, 28));
     const std::uint32_t flags = word(bytes, 80);
     const std::uint32_t fourCc = word(bytes, 84);
-    if (width == 0 || height == 0 || width > maxSide || height > maxSide || levels > 16)
+    if (width == 0 || height == 0 || width > maxSide || height > maxSide || levels > static_cast<std::uint32_t>(std::bit_width(std::max(width, height))))
         return failure("the DDS size is invalid");
     if ((word(bytes, 112) & 0xFE00) != 0 || (word(bytes, 112) & 0x200000) != 0)
         return failure("cube maps and volume textures are not supported");

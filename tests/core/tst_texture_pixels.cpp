@@ -17,6 +17,7 @@ private slots:
     void readsDx10Headers();
     void buildsMipmapsByAveraging();
     void malformedDdsIsRefused();
+    void unknownFormatIsNotExported();
 };
 
 namespace {
@@ -108,8 +109,9 @@ void TestTexturePixels::ddsRoundTripsEveryFormat()
     for (const std::uint32_t format : { 0x31545844u, 0x33545844u, 0x35545844u, 0x31495441u, 0x32495441u, 0x20374342u, 21u, 22u, 23u, 25u, 28u, 32u, 50u }) {
         const Texture original = filled(format, 64, 16, 5);
         const auto dds = writeDds(original);
-        QVERIFY(dds.size() > original.data.size());
-        const auto read = readDds(dds, "again");
+        QVERIFY(dds);
+        QVERIFY(dds->size() > original.data.size());
+        const auto read = readDds(*dds, "again");
         QVERIFY2(read, (std::string(textureFormat(format)->name) + ": " + (read ? "" : read.error().message)).c_str());
         QCOMPARE(read->name, std::string("again"));
         QCOMPARE(read->format, format);
@@ -154,17 +156,27 @@ void TestTexturePixels::malformedDdsIsRefused()
 {
     QVERIFY(!readDds(toVector("DDS "), "x"));
     QVERIFY(!readDds(std::vector<std::byte>(200), "x"));
-    auto truncated = writeDds(filled(0x31545844, 64, 64, 7));
+    auto truncated = *writeDds(filled(0x31545844, 64, 64, 7));
     truncated.resize(truncated.size() - 1);
     QVERIFY(!readDds(truncated, "x"));
-    auto cube = writeDds(filled(0x31545844, 4, 4, 1));
+    auto cube = *writeDds(filled(0x31545844, 4, 4, 1));
     cube[4 + 108] = std::byte { 0x00 };
     cube[4 + 109] = std::byte { 0xFE };
     QVERIFY(!readDds(cube, "x"));
-    auto zero = writeDds(filled(0x31545844, 4, 4, 1));
+    auto deep = *writeDds(filled(0x31545844, 4, 4, 3));
+    deep[28] = std::byte { 16 };
+    deep.resize(deep.size() + 64);
+    QVERIFY(!readDds(deep, "x"));
+    auto zero = *writeDds(filled(0x31545844, 4, 4, 1));
     zero[12] = std::byte { 0 };
     zero[13] = std::byte { 0 };
     QVERIFY(!readDds(zero, "x"));
+}
+
+void TestTexturePixels::unknownFormatIsNotExported()
+{
+    QVERIFY(!writeDds({ "odd", 4, 4, 1, 12345, 0, {} }));
+    QVERIFY(writeDds(filled(0x31545844, 4, 4, 1)));
 }
 
 QTEST_APPLESS_MAIN(TestTexturePixels)

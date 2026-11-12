@@ -6,6 +6,7 @@
 #include "core/ytd/texture_format.h"
 
 #include <algorithm>
+#include <bit>
 
 namespace archon {
 
@@ -151,6 +152,10 @@ Result<std::vector<std::byte>> writeTextureDictionary(std::span<const Texture> i
             return failure(texture.name + " has " + std::to_string(texture.data.size()) + " bytes of pixel data, expected " + std::to_string(*size));
         if (texture.name.empty() || texture.name.size() > maxNameLength)
             return failure("a texture name is empty or too long");
+        if (texture.width == 0 || texture.height == 0 || texture.width > 0xFFFF || texture.height > 0xFFFF || textureStride(texture.format, texture.width) > 0xFFFF)
+            return failure(texture.name + " is larger than 65535 pixels or its row is too long to store");
+        if (texture.levels == 0 || texture.levels > static_cast<std::uint32_t>(std::bit_width(std::max(texture.width, texture.height))))
+            return failure(texture.name + " has more mip levels than its size allows");
         textures.push_back(&texture);
     }
     std::ranges::sort(textures, {}, [](const Texture *texture) { return textureNameHash(texture->name); });

@@ -33,10 +33,12 @@ std::uint32_t singlePageFlags(std::uint64_t size, std::uint32_t versionNibble)
     return version | (1u << largestUnitBit) | static_cast<std::uint32_t>(std::countr_zero(size / largestUnits / pageUnit));
 }
 
-std::vector<std::byte> buildResourceFile(std::uint32_t version, std::span<const std::byte> system, std::span<const std::byte> graphics)
+Result<std::vector<std::byte>> buildResourceFile(std::uint32_t version, std::span<const std::byte> system, std::span<const std::byte> graphics)
 {
     const std::uint64_t systemSize = singlePageSize(system.size());
     const std::uint64_t graphicsSize = graphics.empty() ? 0 : singlePageSize(graphics.size());
+    if (systemSize + graphicsSize > resourceLimit / 2)
+        return std::unexpected(Error { "rsc7", 0, "the resource would be larger than 1 GiB" });
     std::vector<std::byte> pages(static_cast<std::size_t>(systemSize + graphicsSize));
     std::ranges::copy(system, pages.begin());
     std::ranges::copy(graphics, pages.begin() + static_cast<std::ptrdiff_t>(systemSize));
@@ -44,6 +46,8 @@ std::vector<std::byte> buildResourceFile(std::uint32_t version, std::span<const 
     const auto head = buildRsc7Header(header);
     std::vector<std::byte> file(head.begin(), head.end());
     const auto body = compressRaw(pages);
+    if (body.empty())
+        return std::unexpected(Error { "rsc7", 0, "the resource could not be compressed" });
     file.insert(file.end(), body.begin(), body.end());
     return file;
 }

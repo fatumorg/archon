@@ -23,6 +23,8 @@ private slots:
     void exportsDdsAndPng();
     void editingNeedsEditMode();
     void editsAndSaves();
+    void hostileNamesAndFormatsAreNotExported();
+    void hugeImagesAreRefused();
 
 private:
     std::unique_ptr<TextureViewer> viewer(bool editable)
@@ -108,7 +110,7 @@ void TestTextureViewer::editsAndSaves()
     QImage image(16, 8, QImage::Format_RGBA8888);
     image.fill(QColor(10, 20, 30));
     QVERIFY(image.save(folder + QStringLiteral("/added_one.png")));
-    writeFile(pathOf(*directory_) / "replacement.dds", writeDds(rgbaTexture("r", 2, 2, std::vector<std::byte>(16, std::byte { 5 }))));
+    writeFile(pathOf(*directory_) / "replacement.dds", *writeDds(rgbaTexture("r", 2, 2, std::vector<std::byte>(16, std::byte { 5 }))));
     ModalDriver driver({});
     shown->addFiles({ folder + QStringLiteral("/added_one.png") });
     auto *list = shown->findChild<QListWidget *>(QStringLiteral("textureList"));
@@ -136,6 +138,32 @@ void TestTextureViewer::editsAndSaves()
     const auto renamed = std::ranges::find(*textures, "renamed", &Texture::name);
     QCOMPARE(renamed->width, 2u);
     QCOMPARE(renamed->usage, 0x2002b054u);
+}
+
+void TestTextureViewer::hostileNamesAndFormatsAreNotExported()
+{
+    textures_ = { { "../escape", 4, 4, 1, 0x31545844, 0, std::vector<std::byte>(8) }, { "odd", 4, 4, 1, 12345, 0, {} } };
+    auto shown = viewer(false);
+    ModalDriver driver({ QStringLiteral("OK"), QStringLiteral("OK") });
+    QVERIFY(!shown->exportAll(directory_->path() + QStringLiteral("/out/inner"), false));
+    QVERIFY(!QFile::exists(directory_->path() + QStringLiteral("/out/escape.dds")));
+    shown->findChild<QListWidget *>(QStringLiteral("textureList"))->setCurrentRow(1);
+    QVERIFY(!shown->exportSelected(directory_->path() + QStringLiteral("/odd.dds")));
+    QVERIFY(!QFile::exists(directory_->path() + QStringLiteral("/odd.dds")));
+    QVERIFY(driver.done());
+}
+
+void TestTextureViewer::hugeImagesAreRefused()
+{
+    auto shown = viewer(true);
+    QImage image(20000, 1, QImage::Format_RGBA8888);
+    image.fill(Qt::red);
+    QVERIFY(image.save(directory_->path() + QStringLiteral("/huge.png")));
+    ModalDriver driver({ QStringLiteral("OK") });
+    shown->addFiles({ directory_->path() + QStringLiteral("/huge.png") });
+    QVERIFY(driver.done());
+    QVERIFY(driver.seen.first().contains(QStringLiteral("16384")));
+    QCOMPARE(shown->findChild<QListWidget *>(QStringLiteral("textureList"))->count(), 2);
 }
 
 QTEST_MAIN(TestTextureViewer)

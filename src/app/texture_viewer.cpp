@@ -26,6 +26,7 @@ namespace {
 
 constexpr int thumbnail = 64;
 constexpr qint64 importLimit = 1ll << 30;
+constexpr int maxImageSide = 16384;
 
 QImage imageOf(const Texture &texture)
 {
@@ -213,8 +214,10 @@ bool TextureViewer::exportTexture(const Texture &texture, const QString &file)
         return true;
     }
     const auto dds = writeDds(texture);
+    if (!dds)
+        return warnIfFailed(std::unexpected(dds.error()));
     QFile out(file);
-    if (!out.open(QIODevice::WriteOnly) || out.write(reinterpret_cast<const char *>(dds.data()), static_cast<qint64>(dds.size())) != static_cast<qint64>(dds.size()))
+    if (!out.open(QIODevice::WriteOnly) || out.write(reinterpret_cast<const char *>(dds->data()), static_cast<qint64>(dds->size())) != static_cast<qint64>(dds->size()))
         return warnIfFailed(std::unexpected(Error { "export", 0, "cannot write " + file.toStdString() }));
     return true;
 }
@@ -230,6 +233,9 @@ bool TextureViewer::exportAll(const QString &folder, bool png)
     if (!QDir().mkpath(folder))
         return warnIfFailed(std::unexpected(Error { "export", 0, "cannot create " + folder.toStdString() }));
     for (const Texture &texture : textures_) {
+        const QString name = QString::fromStdString(texture.name);
+        if (name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\')) || name == QStringLiteral("..") || name == QStringLiteral("."))
+            return warnIfFailed(std::unexpected(Error { "export", 0, texture.name + " is not a safe file name" }));
         if (!exportTexture(texture, QDir(folder).filePath(QString::fromStdString(texture.name) + (png ? QStringLiteral(".png") : QStringLiteral(".dds")))))
             return false;
     }
@@ -248,6 +254,8 @@ Result<Texture> TextureViewer::load(const QString &file) const
     QImage image;
     if (!image.loadFromData(content))
         return std::unexpected(Error { "import", 0, file.toStdString() + " is not an image ARCHON can read" });
+    if (image.width() > maxImageSide || image.height() > maxImageSide)
+        return std::unexpected(Error { "import", 0, file.toStdString() + " is larger than 16384 pixels" });
     image = image.convertToFormat(QImage::Format_RGBA8888);
     std::vector<std::byte> rgba(static_cast<std::size_t>(image.width()) * image.height() * 4);
     for (int y = 0; y < image.height(); ++y) {

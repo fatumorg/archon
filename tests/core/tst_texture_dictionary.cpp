@@ -24,6 +24,7 @@ private slots:
     void hostileDictionariesAreRefused();
     void emptyDictionaryHasNoTextures();
     void unknownFormatIsNotWritten();
+    void oversizedFieldsAreNotWritten();
     void resourceFileFlagsHoldPages();
     void realDictionariesRoundTrip();
 };
@@ -214,6 +215,18 @@ void TestTextureDictionary::unknownFormatIsNotWritten()
     QCOMPARE(written.error().message, std::string("ok uses texture format 12345, which ARCHON cannot rewrite."));
 }
 
+void TestTextureDictionary::oversizedFieldsAreNotWritten()
+{
+    Texture wide { "wide", 70000, 1, 1, 21, 0x20000014, std::vector<std::byte>(280000) };
+    QCOMPARE(writeTextureDictionary(std::vector<Texture> { wide }).error().message, std::string("wide is larger than 65535 pixels or its row is too long to store"));
+    Texture rowTooLong { "row", 16384, 1, 1, 21, 0x20000014, std::vector<std::byte>(65536) };
+    QVERIFY(!writeTextureDictionary(std::vector<Texture> { rowTooLong }));
+    Texture tooManyLevels = texture("levels", 0x31545844, 4, 4, 3, 1);
+    tooManyLevels.levels = 4;
+    tooManyLevels.data.resize(static_cast<std::size_t>(*mipChainSize(0x31545844, 4, 4, 4)));
+    QCOMPARE(writeTextureDictionary(std::vector<Texture> { tooManyLevels }).error().message, std::string("levels has more mip levels than its size allows"));
+}
+
 void TestTextureDictionary::resourceFileFlagsHoldPages()
 {
     QCOMPARE(rsc7SizeFromFlags(singlePageFlags(0x2000, 0)), std::uint64_t(0x2000));
@@ -222,7 +235,7 @@ void TestTextureDictionary::resourceFileFlagsHoldPages()
     QCOMPARE(singlePageFlags(0x2000, 0xD) >> 28, 0xDu);
     const std::vector<std::byte> system(0x2000, std::byte { 1 });
     const std::vector<std::byte> graphics(0x4000, std::byte { 2 });
-    const auto file = buildResourceFile(13, system, graphics);
+    const auto file = *buildResourceFile(13, system, graphics);
     const auto header = parseRsc7Header(std::span(file).first(16));
     QVERIFY(header);
     QCOMPARE(header->version, 13u);
