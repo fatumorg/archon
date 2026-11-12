@@ -124,6 +124,7 @@ private slots:
     void asiManagerOpensFromTools();
     void activatingOivOpensPackageInstaller();
     void texturesOpenEditAndSave();
+    void editionIsShownAndGameChoiceCanBeCancelled();
 
 private:
     void turnOnEditMode()
@@ -399,7 +400,7 @@ void TestMainWindow::actionsAreExactlyTheWorkingSet()
     texts.removeDuplicates();
     texts.sort();
     QStringList expected { "E&xit", "Extract…", "Open", "Select &all", "&Refresh", "&Up one level", "&Back", "&Forward", "&Search…", "&About ARCHON",
-        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…", "&ASI Manager…", "&Package Installer…", "Package &Creator…" };
+        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…", "&ASI Manager…", "&Package Installer…", "Package &Creator…", "&Choose game…" };
     expected.sort();
     QCOMPARE(texts, expected);
 }
@@ -796,6 +797,24 @@ void TestMainWindow::texturesOpenEditAndSave()
     QVERIFY(read);
     QCOMPARE(read->front().name, std::string("repainted"));
     QCOMPARE(listTransactions(store_).front().description, std::string("Replace mods/cars.rpf/cars.ytd"));
+}
+
+void TestMainWindow::editionIsShownAndGameChoiceCanBeCancelled()
+{
+    QVERIFY(statusTexts(*window_).contains(QStringLiteral("Grand Theft Auto V")));
+    MainWindow enhanced(root_, nullptr, store_, GameEdition::Enhanced);
+    QVERIFY(statusTexts(enhanced).contains(QStringLiteral("Grand Theft Auto V Enhanced")));
+    QCOMPARE(enhanced.findChild<QTreeWidget *>(QStringLiteral("navigationTree"))->topLevelItem(0)->text(0), QStringLiteral("GTA V Enhanced"));
+    QStringList crumbs;
+    for (const QToolButton *button : enhanced.findChild<AddressBar *>(QStringLiteral("addressBar"))->findChildren<QToolButton *>())
+        crumbs.append(button->text());
+    QCOMPARE(crumbs, QStringList({ "ARCHON", "GTA V Enhanced" }));
+    QSignalSpy requested(window_.get(), &MainWindow::gameChangeRequested);
+    ModalDriver driver({ QStringLiteral("Cancel") });
+    actionNamed(window_.get(), QStringLiteral("&Choose game…"))->trigger();
+    QVERIFY(driver.done());
+    QCOMPARE(requested.size(), 0);
+    QVERIFY(window_->isVisible());
 }
 
 QTEST_MAIN(TestMainWindow)

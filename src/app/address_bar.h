@@ -14,6 +14,7 @@ public:
     explicit AddressBar(QWidget *parent = nullptr);
 
     void setPath(const QString &path);
+    void setRootName(const QString &name);
     void beginEdit();
 
 signals:
@@ -27,6 +28,7 @@ private:
     void endEdit();
 
     QString path_;
+    QString rootName_ = QStringLiteral("GTA V");
     QStackedLayout *pages_;
     QWidget *crumbs_;
     QHBoxLayout *crumbLayout_;

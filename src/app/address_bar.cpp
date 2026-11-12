@@ -39,7 +39,7 @@ void AddressBar::setPath(const QString &path)
         delete item->widget();
         delete item;
     }
-    QStringList names { QStringLiteral("ARCHON"), QStringLiteral("GTA V") };
+    QStringList names { QStringLiteral("ARCHON"), rootName_ };
     QStringList targets { QString(), QString() };
     const QStringList components = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     for (qsizetype i = 0; i < components.size(); ++i) {
@@ -90,6 +90,12 @@ bool AddressBar::eventFilter(QObject *watched, QEvent *event)
         }
     }
     return QFrame::eventFilter(watched, event);
+}
+
+void AddressBar::setRootName(const QString &name)
+{
+    rootName_ = name;
+    setPath(path_);
 }
 
 }

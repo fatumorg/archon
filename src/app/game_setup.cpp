@@ -161,6 +161,14 @@ std::optional<GameInstall> chooseInstall(QWidget *parent)
     return chosen;
 }
 
+std::optional<GameInstall> pickInstall(QWidget *parent)
+{
+    const auto chosen = askForInstall(parent, findSteamInstalls(QDir::homePath().toStdString()));
+    if (chosen)
+        settings().setValue(pathSetting, QString::fromStdString(chosen->root.string()));
+    return chosen;
+}
+
 std::optional<GameSession> openSession(QWidget *parent)
 {
     const auto install = chooseInstall(parent);

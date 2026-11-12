@@ -4,6 +4,7 @@
 #include "app/asi_manager_dialog.h"
 #include "app/busy.h"
 #include "app/display_format.h"
+#include "app/game_setup.h"
 #include "app/history_dialog.h"
 #include "app/package_creator_dialog.h"
 #include "app/package_installer_dialog.h"
@@ -251,6 +252,15 @@ void MainWindow::buildActions()
     searchAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F3));
     connect(searchAction_, &QAction::triggered, this, &MainWindow::openSearch);
 
+    chooseGameAction_ = new QAction(tr("&Choose game…"), this);
+    connect(chooseGameAction_, &QAction::triggered, this, [this] {
+        const auto chosen = pickInstall(this);
+        if (!chosen || std::filesystem::equivalent(chosen->root, root_))
+            return;
+        emit gameChangeRequested();
+        close();
+    });
+
     exitAction_ = new QAction(tr("E&xit"), this);
     connect(exitAction_, &QAction::triggered, this, &QWidget::close);
 
@@ -356,6 +366,7 @@ void MainWindow::buildNavigationRow()
     forward->setToolButtonStyle(Qt::ToolButtonIconOnly);
 
     address_ = new AddressBar(row);
+    address_->setRootName(edition_ == GameEdition::Enhanced ? QStringLiteral("GTA V Enhanced") : QStringLiteral("GTA V"));
     address_->setObjectName(QStringLiteral("addressBar"));
     connect(address_, &AddressBar::pathRequested, this, &MainWindow::navigate);
 
@@ -383,6 +394,8 @@ void MainWindow::buildNavigationRow()
 
     auto *menus = new QMenuBar(top);
     QMenu *file = menus->addMenu(tr("&File"));
+    file->addAction(chooseGameAction_);
+    file->addSeparator();
     file->addAction(rebuildAction_);
     file->addSeparator();
     file->addAction(exitAction_);
@@ -494,7 +507,7 @@ void MainWindow::buildStatusBar()
     statusBar()->addWidget(shownLabel_);
     statusBar()->addWidget(selectedLabel_);
     statusBar()->addPermanentWidget(locationLabel_);
-    statusBar()->addPermanentWidget(new QLabel(QStringLiteral("Grand Theft Auto V"), this));
+    statusBar()->addPermanentWidget(new QLabel(edition_ == GameEdition::Enhanced ? QStringLiteral("Grand Theft Auto V Enhanced") : QStringLiteral("Grand Theft Auto V"), this));
     statusBar()->addPermanentWidget(new QLabel(QStringLiteral("Windows"), this));
     statusBar()->addPermanentWidget(new QLabel(QStringLiteral("ARCHON %1").arg(versionString()), this));
 }
@@ -540,7 +553,7 @@ void MainWindow::resetTree()
 {
     const QSignalBlocker blocker(tree_);
     tree_->clear();
-    auto *root = new QTreeWidgetItem(tree_, { QStringLiteral("GTA V") });
+    auto *root = new QTreeWidgetItem(tree_, { edition_ == GameEdition::Enhanced ? QStringLiteral("GTA V Enhanced") : QStringLiteral("GTA V") });
     root->setIcon(0, loadIcon(QStringLiteral("archon")));
     root->setData(0, pathRole, QString());
     fillTreeItem(root);

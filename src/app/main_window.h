@@ -33,6 +33,9 @@ public:
     void renameSelection(const QString &name);
     void rebuildCurrentArchive();
 
+signals:
+    void gameChangeRequested();
+
 private:
     bool open(const QString &path, bool record);
     void buildActions();
@@ -102,6 +105,7 @@ private:
     QAction *asiManagerAction_ = nullptr;
     QAction *packageInstallerAction_ = nullptr;
     QAction *packageCreatorAction_ = nullptr;
+    QAction *chooseGameAction_ = nullptr;
 };
 
 }
