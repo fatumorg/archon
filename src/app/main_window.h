@@ -3,6 +3,7 @@
 #include "core/game/game_edit.h"
 #include "core/game/game_install.h"
 #include "core/meta/name_table.h"
+#include "core/ytd/texture_dictionary.h"
 
 #include <QMainWindow>
 
@@ -65,6 +66,8 @@ private:
     void openHistory();
     void openPackage(const QString &file);
     void openTextures(const QString &name);
+    void openModel(const QString &name);
+    Result<std::vector<Texture>> readTextures(const QString &name, std::uint32_t &version);
     void openText(const QString &name);
     std::shared_ptr<const NameTable> metadataNames();
     Result<std::vector<std::byte>> readEntry(const QString &name);

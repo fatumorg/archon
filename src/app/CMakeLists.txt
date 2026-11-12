@@ -7,6 +7,7 @@ add_library(archon-app STATIC
     game_setup.cpp
     history_dialog.cpp
     main_window.cpp
+    model_viewer.cpp
     package_creator_dialog.cpp
     package_installer_dialog.cpp
     prefix_setup_dialog.cpp
@@ -15,7 +16,7 @@ add_library(archon-app STATIC
     text_editor.cpp
     texture_viewer.cpp
 )
-target_link_libraries(archon-app PUBLIC archon-core Qt6::Widgets Qt6::Svg Qt6::Network)
+target_link_libraries(archon-app PUBLIC archon-core Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg Qt6::Network)
 
 add_executable(archon main.cpp icons.qrc)
 target_link_libraries(archon PRIVATE archon-app)

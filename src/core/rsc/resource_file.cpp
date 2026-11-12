@@ -42,7 +42,7 @@ Result<std::vector<std::byte>> buildResourceFile(std::uint32_t version, std::spa
     std::vector<std::byte> pages(static_cast<std::size_t>(systemSize + graphicsSize));
     std::ranges::copy(system, pages.begin());
     std::ranges::copy(graphics, pages.begin() + static_cast<std::ptrdiff_t>(systemSize));
-    const Rsc7Header header { version, singlePageFlags(systemSize, (version >> 4) & 0xF), graphics.empty() ? 0u : singlePageFlags(graphicsSize, version & 0xF) };
+    const Rsc7Header header { version, singlePageFlags(systemSize, (version >> 4) & 0xF), graphics.empty() ? (version & 0xF) << 28 : singlePageFlags(graphicsSize, version & 0xF) };
     const auto head = buildRsc7Header(header);
     std::vector<std::byte> file(head.begin(), head.end());
     const auto body = compressRaw(pages);

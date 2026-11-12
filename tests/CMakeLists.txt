@@ -24,6 +24,7 @@ function(archon_add_app_test name)
 endfunction()
 
 archon_add_app_test(tst_main_window app/tst_main_window.cpp)
+archon_add_app_test(tst_model_viewer app/tst_model_viewer.cpp)
 archon_add_app_test(tst_display_format app/tst_display_format.cpp)
 archon_add_app_test(tst_game_setup app/tst_game_setup.cpp)
 archon_add_app_test(tst_asi_dialogs app/tst_asi_dialogs.cpp)

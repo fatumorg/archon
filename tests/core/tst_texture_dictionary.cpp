@@ -290,6 +290,11 @@ void TestTextureDictionary::resourceFileFlagsHoldPages()
     QCOMPARE(pages->size(), std::size_t(0x6000));
     QCOMPARE((*pages)[0x1FFF], std::byte { 1 });
     QCOMPARE((*pages)[0x2000], std::byte { 2 });
+    const auto systemOnlyFile = *buildResourceFile(165, system, {});
+    const auto systemOnly = parseRsc7Header(std::span(systemOnlyFile).first(16));
+    QVERIFY(systemOnly);
+    QCOMPARE(rsc7VersionFromFlags(systemOnly->systemFlags, systemOnly->graphicsFlags), 165u);
+    QCOMPARE(rsc7SizeFromFlags(systemOnly->graphicsFlags), std::uint64_t(0));
 }
 
 void TestTextureDictionary::realDictionariesRoundTrip()

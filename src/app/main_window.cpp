@@ -6,12 +6,14 @@
 #include "app/display_format.h"
 #include "app/game_setup.h"
 #include "app/history_dialog.h"
+#include "app/model_viewer.h"
 #include "app/package_creator_dialog.h"
 #include "app/package_installer_dialog.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
 #include "app/text_editor.h"
 #include "app/texture_viewer.h"
+#include "core/drawable/drawable.h"
 #include "core/io/ascii.h"
 #include "core/meta/metadata_document.h"
 #include "core/meta/text_file.h"
@@ -617,6 +619,10 @@ void MainWindow::activate(QTreeWidgetItem *item)
         openTextures(QString::fromStdString(node.name));
         return;
     }
+    if (isDrawableName(node.name)) {
+        openModel(QString::fromStdString(node.name));
+        return;
+    }
     const bool metadata = isTextMetadataName(node.name) || isBinaryMetadataName(node.name);
     if (metadata && node.size > textFileLimit) {
         QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(textTooLargeMessage(node.name)));
@@ -982,26 +988,60 @@ Result<void> MainWindow::saveEntry(const QString &name, const std::vector<std::b
     return {};
 }
 
-void MainWindow::openTextures(const QString &name)
+Result<std::vector<Texture>> MainWindow::readTextures(const QString &name, std::uint32_t &version)
 {
     const auto file = readEntry(name);
-    Result<std::vector<Texture>> textures = std::unexpected(file ? Error { "ytd", 0, name.toStdString() + " cannot be read" } : file.error());
-    std::uint32_t version = legacyDictionaryVersion;
-    if (file && file->size() >= 16) {
-        const auto header = parseRsc7Header(std::span(*file).first(16));
-        const auto pages = inflateResource(*file);
-        if (header)
-            version = header->version;
-        if (header && pages)
-            textures = readTextureDictionary(*pages, rsc7SizeFromFlags(header->systemFlags), version);
-        else
-            textures = std::unexpected(header ? pages.error() : header.error());
+    if (!file)
+        return std::unexpected(file.error());
+    if (file->size() < 16)
+        return std::unexpected(Error { "ytd", 0, name.toStdString() + " cannot be read" });
+    const auto header = parseRsc7Header(std::span(*file).first(16));
+    if (!header)
+        return std::unexpected(header.error());
+    version = header->version;
+    const auto pages = inflateResource(*file);
+    if (!pages)
+        return std::unexpected(pages.error());
+    return readTextureDictionary(*pages, rsc7SizeFromFlags(header->systemFlags), version);
+}
+
+void MainWindow::openModel(const QString &name)
+{
+    const auto file = readEntry(name);
+    auto drawables = file ? readDrawables(*file, name.toStdString()) : Result<std::vector<Drawable>>(std::unexpected(file.error()));
+    if (!drawables) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(drawables.error().message));
+        return;
     }
+    const QString base = name.left(name.lastIndexOf(QLatin1Char('.')));
+    QStringList candidates { base + QStringLiteral(".ytd") };
+    if (base.endsWith(QLatin1StringView("_hi"), Qt::CaseInsensitive))
+        candidates << base.chopped(3) + QStringLiteral("+hi.ytd") << base.chopped(3) + QStringLiteral(".ytd");
+    if (name.endsWith(QLatin1StringView(".yft"), Qt::CaseInsensitive))
+        candidates << QStringLiteral("vehshare.ytd");
+    std::vector<Texture> textures;
+    for (const QString &candidate : candidates) {
+        const auto node = std::ranges::find_if(nodes_, [&candidate](const BrowserNode &entry) { return entry.kind == NodeKind::File && QString::fromStdString(entry.name).compare(candidate, Qt::CaseInsensitive) == 0; });
+        if (node == nodes_.end())
+            continue;
+        std::uint32_t version = 0;
+        if (auto found = readTextures(QString::fromStdString(node->name), version))
+            std::ranges::move(*found, std::back_inserter(textures));
+    }
+    const auto names = drawables->size() > 1 ? metadataNames() : std::make_shared<const NameTable>();
+    ModelViewer viewer(name, std::move(*drawables), std::move(textures), *names, this);
+    viewer.exec();
+}
+
+void MainWindow::openTextures(const QString &name)
+{
+    std::uint32_t version = legacyDictionaryVersion;
+    const auto textures = readTextures(name, version);
     if (!textures) {
         QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(textures.error().message));
         return;
     }
-    TextureViewer viewer(name, std::move(*textures), editMode_, [this, name](const std::vector<std::byte> &bytes) { return saveEntry(name, bytes); }, version, this);
+    TextureViewer viewer(name, *textures, editMode_, [this, name](const std::vector<std::byte> &bytes) { return saveEntry(name, bytes); }, version, this);
     viewer.exec();
 }
 

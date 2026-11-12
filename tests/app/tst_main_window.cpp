@@ -4,6 +4,7 @@
 #include "app/text_editor.h"
 #include "app/texture_viewer.h"
 #include "app/main_window.h"
+#include "app/model_viewer.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
 #include "core/game/game_browser.h"
@@ -16,6 +17,7 @@
 #include "core/rpf/rpf_reader.h"
 #include "core/safety/transaction.h"
 #include "support/browse_fixture.h"
+#include "support/drawable_samples.h"
 #include "support/meta_samples.h"
 #include "support/modal_driver.h"
 #include "support/zip_builder.h"
@@ -133,6 +135,7 @@ private slots:
     void textMetadataOpensEditsAndSaves();
     void hugeTextFileIsRefusedBeforeReading();
     void binaryMetadataOpensAsXmlAndSaves();
+    void drawableOpensModelViewer();
 
 private:
     void turnOnEditMode()
@@ -922,6 +925,45 @@ void TestMainWindow::binaryMetadataOpensAsXmlAndSaves()
     const auto reopened = openMetadata(std::as_bytes(std::span(saved.data(), saved.size())), NameTable());
     QVERIFY(reopened);
     QVERIFY(reopened->xml.find("value=\"2.5\"") != std::string::npos);
+}
+
+void TestMainWindow::drawableOpensModelViewer()
+{
+    const auto ydr = drawableFile(sampleDrawable(), 165);
+    const auto ydrHeader = parseRsc7Header(std::span(ydr).first(16)).value();
+    const auto ytd = writeTextureDictionary(std::vector<Texture> { rgbaTexture("tri_d", 4, 4, std::vector<std::byte>(64, std::byte { 9 })) }).value();
+    const auto ytdHeader = parseRsc7Header(std::span(ytd).first(16)).value();
+    RpfBuilder archive;
+    archive.addResourceBody("tri_hi.ydr", std::vector<std::byte>(ydr.begin() + 16, ydr.end()), ydrHeader.systemFlags, ydrHeader.graphicsFlags);
+    archive.addResourceBody("plain.ydr", std::vector<std::byte>(ydr.begin() + 16, ydr.end()), ydrHeader.systemFlags, ydrHeader.graphicsFlags);
+    archive.addResourceBody("tri+hi.ytd", std::vector<std::byte>(ytd.begin() + 16, ytd.end()), ytdHeader.systemFlags, ytdHeader.graphicsFlags);
+    DrawableSampleOptions fragment;
+    fragment.kind = SampleKind::Yft;
+    const auto yft = drawableFile(sampleDrawable(fragment), 162);
+    const auto yftHeader = parseRsc7Header(std::span(yft).first(16)).value();
+    archive.addResourceBody("car.yft", std::vector<std::byte>(yft.begin() + 16, yft.end()), yftHeader.systemFlags, yftHeader.graphicsFlags);
+    archive.addResourceBody("vehshare.ytd", std::vector<std::byte>(ytd.begin() + 16, ytd.end()), ytdHeader.systemFlags, ytdHeader.graphicsFlags);
+    writeFile(root_ / "models.rpf", archive.build());
+    QVERIFY(window_->navigate(QStringLiteral("models.rpf")));
+    QStringList seen;
+    QStringList boxes;
+    QTimer driver;
+    driver.setInterval(20);
+    connect(&driver, &QTimer::timeout, this, [&seen, &boxes] {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            boxes.append(box->text());
+            QTimer::singleShot(0, box, &QWidget::close);
+        } else if (auto *viewer = qobject_cast<ModelViewer *>(QApplication::activeModalWidget())) {
+            seen.append(viewer->windowTitle() + QLatin1Char('|') + viewer->findChild<QLabel *>(QStringLiteral("modelStatus"))->text());
+            QTimer::singleShot(0, viewer, &QDialog::reject);
+        }
+    });
+    driver.start();
+    emit list_->itemActivated(row(list_, QStringLiteral("tri_hi.ydr")), 0);
+    emit list_->itemActivated(row(list_, QStringLiteral("plain.ydr")), 0);
+    emit list_->itemActivated(row(list_, QStringLiteral("car.yft")), 0);
+    QVERIFY2(boxes.isEmpty(), qPrintable(boxes.join(QLatin1Char('\n'))));
+    QCOMPARE(seen, (QStringList { QStringLiteral("tri_hi.ydr - Model viewer|1 mesh, 1 triangle"), QStringLiteral("plain.ydr - Model viewer|1 mesh, 1 triangle, 1 texture not found"), QStringLiteral("car.yft - Model viewer|1 mesh, 1 triangle") }));
 }
 
 QTEST_MAIN(TestMainWindow)
