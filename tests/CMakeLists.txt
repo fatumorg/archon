@@ -45,6 +45,7 @@ archon_add_test(tst_zip_archive core/tst_zip_archive.cpp)
 archon_add_test(tst_asi_manager core/tst_asi_manager.cpp)
 archon_add_test(tst_prefix core/tst_prefix.cpp)
 archon_add_test(tst_oiv_package core/tst_oiv_package.cpp)
+archon_add_test(tst_content_edit core/tst_content_edit.cpp)
 archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
 
 set_tests_properties(tst_game_setup tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract tst_rpf_writer PROPERTIES LABELS real)
