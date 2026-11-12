@@ -5,6 +5,7 @@
 #include "app/busy.h"
 #include "app/display_format.h"
 #include "app/history_dialog.h"
+#include "app/package_creator_dialog.h"
 #include "app/package_installer_dialog.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
@@ -316,6 +317,12 @@ void MainWindow::buildActions()
             openPackage(file);
     });
 
+    packageCreatorAction_ = new QAction(tr("Package &Creator…"), this);
+    connect(packageCreatorAction_, &QAction::triggered, this, [this] {
+        PackageCreatorDialog dialog(this);
+        dialog.exec();
+    });
+
     asiManagerAction_ = new QAction(loadIcon(QStringLiteral("asi")), tr("&ASI Manager…"), this);
     connect(asiManagerAction_, &QAction::triggered, this, [this] {
         AsiManagerDialog dialog(root_, edition_, store_, this);
@@ -399,6 +406,7 @@ void MainWindow::buildNavigationRow()
     QMenu *tools = menus->addMenu(tr("&Tools"));
     tools->addAction(searchAction_);
     tools->addAction(packageInstallerAction_);
+    tools->addAction(packageCreatorAction_);
     tools->addAction(asiManagerAction_);
     tools->addAction(historyAction_);
     QMenu *help = menus->addMenu(tr("&Help"));

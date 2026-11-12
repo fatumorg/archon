@@ -7,6 +7,7 @@ add_library(archon-app STATIC
     game_setup.cpp
     history_dialog.cpp
     main_window.cpp
+    package_creator_dialog.cpp
     package_installer_dialog.cpp
     prefix_setup_dialog.cpp
     search_dialog.cpp

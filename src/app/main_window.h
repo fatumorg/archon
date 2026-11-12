@@ -101,6 +101,7 @@ private:
     QAction *historyAction_ = nullptr;
     QAction *asiManagerAction_ = nullptr;
     QAction *packageInstallerAction_ = nullptr;
+    QAction *packageCreatorAction_ = nullptr;
 };
 
 }

@@ -399,7 +399,7 @@ void TestMainWindow::actionsAreExactlyTheWorkingSet()
     texts.removeDuplicates();
     texts.sort();
     QStringList expected { "E&xit", "Extract…", "Open", "Select &all", "&Refresh", "&Up one level", "&Back", "&Forward", "&Search…", "&About ARCHON",
-        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…", "&ASI Manager…", "&Package Installer…" };
+        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…", "&ASI Manager…", "&Package Installer…", "Package &Creator…" };
     expected.sort();
     QCOMPARE(texts, expected);
 }
