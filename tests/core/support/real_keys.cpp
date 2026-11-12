@@ -2,6 +2,8 @@
 
 #include "support/real_install.h"
 
+#include "core/game/game_install.h"
+
 #include <memory>
 
 namespace archon::test {
@@ -16,7 +18,13 @@ const Keys *realKeys()
     static std::unique_ptr<Keys> keys;
     if (keys || !realGameDir() || !realMagicDat())
         return keys.get();
-    const auto loaded = loadKeys(*realGameDir() / "GTA5.exe", *realMagicDat(), std::filesystem::path(ARCHON_TEST_CACHE_DIR) / "test-keys.bin");
+    const auto install = openGameInstall(*realGameDir());
+    if (!install) {
+        qWarning("%s", install.error().message.c_str());
+        return nullptr;
+    }
+    const std::string cache = install->edition == GameEdition::Enhanced ? "test-keys-enhanced.bin" : "test-keys.bin";
+    const auto loaded = loadKeys(install->executable, *realMagicDat(), std::filesystem::path(ARCHON_TEST_CACHE_DIR) / cache);
     if (!loaded) {
         qWarning("%s", loaded.error().message.c_str());
         return nullptr;

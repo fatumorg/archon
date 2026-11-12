@@ -18,7 +18,7 @@ Every change is written through a journal and backed up before any byte is overw
 
 ## Package Creator
 
-Tools > Package Creator writes an OIV 2.2 package. The Package tab holds the name, version, author, descriptions, licence, header colours and icon; the Content tab lists files to add, each with its target folder in the game (archives included, for example `x64e.rpf/levels/gta5/vehicles.rpf`), and game files to delete. Packages it writes install with the Package Installer, in ARCHON and in OpenIV.
+Tools > Package Creator writes an OIV 2.2 package. The Package tab holds the name, version, author, descriptions, licence, header colours and icon; the Content tab lists files to add, each with its target folder in the game (archives included, for example `x64e.rpf/levels/gta5/vehicles.rpf`), and game files to delete. Packages it writes are OIV 2.2 and install with the Package Installer.
 
 ## Textures
 

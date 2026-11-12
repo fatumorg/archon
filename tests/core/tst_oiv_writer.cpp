@@ -30,12 +30,20 @@ private:
         writeFile(file, content);
         return file;
     }
+    Result<ZipArchive> written(const PackageDraft &package)
+    {
+        const std::filesystem::path file = pathOf(*directory_) / ("out" + std::to_string(++outputs_) + ".oiv");
+        if (auto made = writeOivPackage(package, file); !made)
+            return std::unexpected(made.error());
+        return ZipArchive::open(readFile(file));
+    }
     PackageDraft draft()
     {
         return { "My Mod", 1, 2, "Beta", "Me", "https://example.com/", "Short.", "History", "1.2: things.", "Free.", 0xFF23366A, false, 0xFF3B5998, {}, {} };
     }
 
     std::unique_ptr<QTemporaryDir> directory_;
+    int outputs_ = 0;
 };
 
 void TestOivWriter::init()
@@ -45,15 +53,19 @@ void TestOivWriter::init()
 
 void TestOivWriter::zipWriterRoundTrips()
 {
-    ZipWriter writer;
-    QVERIFY(writer.add("a.txt", toVector("alpha")));
-    QVERIFY(writer.addFile("folder/b.bin", source("b.bin", "beta")));
-    QVERIFY(!writer.addFile("missing.bin", pathOf(*directory_) / "nope"));
-    const auto bytes = writer.finish();
-    QVERIFY2(bytes, bytes ? "" : bytes.error().message.c_str());
-    const auto zip = ZipArchive::open(*bytes);
+    const std::filesystem::path file = pathOf(*directory_) / "plain.zip";
+    {
+        ZipWriter writer(file);
+        QVERIFY(writer.add("a.txt", toVector("alpha")));
+        QVERIFY(writer.addDirectory("empty"));
+        QVERIFY(writer.addFile("folder/b.bin", source("b.bin", "beta")));
+        QVERIFY(!writer.addFile("missing.bin", pathOf(*directory_) / "nope"));
+        const auto finished = writer.finish();
+        QVERIFY2(finished, finished ? "" : finished.error().message.c_str());
+    }
+    const auto zip = ZipArchive::open(readFile(file));
     QVERIFY(zip);
-    QCOMPARE(zip->names(), (std::vector<std::string> { "a.txt", "folder/b.bin" }));
+    QCOMPARE(zip->names(), (std::vector<std::string> { "a.txt", "empty/", "folder/b.bin" }));
     QCOMPARE(toText(*zip->read("folder/b.bin", 100)), std::string("beta"));
 }
 
@@ -81,9 +93,8 @@ void TestOivWriter::targetsSplitIntoArchives()
         { PackageItem::Kind::Delete, {}, "x64e.rpf/levels/gta5/vehicles.rpf/old.ytd" },
         { PackageItem::Kind::Add, source("ScriptMod.asi", "asi"), "ScriptMod.asi" },
     };
-    const auto bytes = writeOivPackage(package);
-    QVERIFY2(bytes, bytes ? "" : bytes.error().message.c_str());
-    const auto zip = ZipArchive::open(*bytes);
+    const auto zip = written(package);
+    QVERIFY2(zip, zip ? "" : zip.error().message.c_str());
     const auto read = readOivPackage(*zip);
     QVERIFY2(read, read ? "" : read.error().message.c_str());
     const auto &commands = read->contents[0].commands;
@@ -107,7 +118,7 @@ void TestOivWriter::specialCharactersSurvive()
     package.name = "Cars & <Bikes>";
     package.description = "Line one\nLine \"two\" ]]> end & more";
     package.items.push_back({ PackageItem::Kind::Add, source("a.txt", "a"), "a.txt" });
-    const auto zip = ZipArchive::open(*writeOivPackage(package));
+    const auto zip = written(package);
     const auto read = readOivPackage(*zip);
     QVERIFY2(read, read ? "" : read.error().message.c_str());
     QCOMPARE(read->name, package.name);
@@ -122,7 +133,7 @@ void TestOivWriter::duplicateFileNamesSurvive()
 {
     PackageDraft package = draft();
     package.items = { { PackageItem::Kind::Add, source("one/same.txt", "first"), "a/same.txt" }, { PackageItem::Kind::Add, source("two/same.txt", "second"), "b/same.txt" } };
-    const auto zip = ZipArchive::open(*writeOivPackage(package));
+    const auto zip = written(package);
     const auto read = readOivPackage(*zip);
     QCOMPARE(toText(*oivSource(*zip, *read, read->contents[0].commands[0].source)), std::string("first"));
     QCOMPARE(toText(*oivSource(*zip, *read, read->contents[0].commands[1].source)), std::string("second"));
@@ -131,20 +142,23 @@ void TestOivWriter::duplicateFileNamesSurvive()
 void TestOivWriter::invalidDraftsAreRefused()
 {
     PackageDraft empty = draft();
-    QCOMPARE(writeOivPackage(empty).error().message, std::string("The package has no content."));
+    QCOMPARE(written(empty).error().message, std::string("The package has no content."));
     PackageDraft noName = draft();
     noName.name.clear();
     noName.items.push_back({ PackageItem::Kind::Add, source("a.txt", "a"), "a.txt" });
-    QCOMPARE(writeOivPackage(noName).error().message, std::string("The package needs a name."));
+    QCOMPARE(written(noName).error().message, std::string("The package needs a name."));
     PackageDraft hostile = draft();
     hostile.items.push_back({ PackageItem::Kind::Add, source("a.txt", "a"), "..\\outside.txt" });
-    QVERIFY(!writeOivPackage(hostile));
+    QVERIFY(!written(hostile));
     PackageDraft archiveTarget = draft();
     archiveTarget.items.push_back({ PackageItem::Kind::Delete, {}, "update/update.rpf" });
-    QVERIFY(writeOivPackage(archiveTarget));
+    const auto deleteOnly = written(archiveTarget);
+    QVERIFY(deleteOnly);
+    QVERIFY(std::ranges::find(deleteOnly->names(), "content/") != deleteOnly->names().end());
     PackageDraft missing = draft();
     missing.items.push_back({ PackageItem::Kind::Add, pathOf(*directory_) / "nope.txt", "a.txt" });
-    QVERIFY(!writeOivPackage(missing));
+    QVERIFY(!written(missing));
+    QVERIFY(!std::filesystem::exists(pathOf(*directory_) / ("out" + std::to_string(outputs_) + ".oiv")));
 }
 
 void TestOivWriter::writtenPackageInstalls()
@@ -157,7 +171,7 @@ void TestOivWriter::writtenPackageInstalls()
         { PackageItem::Kind::Delete, {}, "common.rpf/x.ytd" },
         { PackageItem::Kind::Add, source("mod.asi", "asi"), "mod.asi" },
     };
-    const auto zip = ZipArchive::open(*writeOivPackage(package));
+    const auto zip = written(package);
     const auto read = readOivPackage(*zip);
     QVERIFY(read);
     const auto installed = installOivPackage(*zip, *read, 0, InstallTarget::Game, root, nullptr, pathOf(*directory_) / "store");

@@ -151,28 +151,44 @@ Result<std::string> assemblyXml(const PackageDraft &draft, const std::string &id
     return out.str();
 }
 
-Result<std::vector<std::byte>> writeOivPackage(const PackageDraft &draft)
+Result<void> writeOivPackage(const PackageDraft &draft, const std::filesystem::path &file)
 {
     const std::string id = QUuid::createUuid().toString(QUuid::WithBraces).toUpper().toStdString();
     const auto xml = assemblyXml(draft, id);
     if (!xml)
         return std::unexpected(xml.error());
-    ZipWriter zip;
-    const auto bytes = std::as_bytes(std::span(xml->data(), xml->size()));
-    if (auto added = zip.add("assembly.xml", std::vector<std::byte>(bytes.begin(), bytes.end())); !added)
-        return std::unexpected(added.error());
-    if (!draft.iconPng.empty()) {
-        if (auto added = zip.add("icon.png", draft.iconPng); !added)
-            return std::unexpected(added.error());
+    const std::filesystem::path partial = file.string() + ".part";
+    std::error_code error;
+    const auto write = [&]() -> Result<void> {
+        ZipWriter zip(partial);
+        const auto bytes = std::as_bytes(std::span(xml->data(), xml->size()));
+        if (auto added = zip.add("assembly.xml", std::vector<std::byte>(bytes.begin(), bytes.end())); !added)
+            return added;
+        if (!draft.iconPng.empty()) {
+            if (auto added = zip.add("icon.png", draft.iconPng); !added)
+                return added;
+        }
+        if (auto added = zip.addDirectory("content"); !added)
+            return added;
+        for (std::size_t index = 0; index < draft.items.size(); ++index) {
+            const PackageItem &item = draft.items[index];
+            if (item.kind != PackageItem::Kind::Add)
+                continue;
+            if (auto added = zip.addFile("content/" + sourceName(index, item), item.source); !added)
+                return added;
+        }
+        return zip.finish();
+    };
+    if (auto written = write(); !written) {
+        std::filesystem::remove(partial, error);
+        return written;
     }
-    for (std::size_t index = 0; index < draft.items.size(); ++index) {
-        const PackageItem &item = draft.items[index];
-        if (item.kind != PackageItem::Kind::Add)
-            continue;
-        if (auto added = zip.addFile("content/" + sourceName(index, item), item.source); !added)
-            return std::unexpected(added.error());
+    std::filesystem::rename(partial, file, error);
+    if (error) {
+        std::filesystem::remove(partial, error);
+        return failure("cannot write " + file.string());
     }
-    return zip.finish();
+    return {};
 }
 
 }

@@ -24,6 +24,7 @@ public:
     void addDelete(const QString &target);
     void removeSelected();
     bool createPackage(const QString &file);
+    bool setIcon(const QString &file);
 
 private:
     QWidget *buildPackageTab();

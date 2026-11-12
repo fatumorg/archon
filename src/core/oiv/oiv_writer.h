@@ -32,6 +32,6 @@ struct PackageDraft {
 };
 
 Result<std::string> assemblyXml(const PackageDraft &draft, const std::string &id);
-Result<std::vector<std::byte>> writeOivPackage(const PackageDraft &draft);
+Result<void> writeOivPackage(const PackageDraft &draft, const std::filesystem::path &file);
 
 }

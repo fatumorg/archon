@@ -4,6 +4,7 @@
 #include "support/test_bytes.h"
 
 #include <QCheckBox>
+#include <QImage>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QSpinBox>
@@ -21,6 +22,7 @@ private slots:
     void itemsTableAndRemove();
     void createsReadablePackage();
     void validationErrorIsShown();
+    void iconIsExactly128();
 
 private:
     void fill(PackageCreatorDialog &dialog)
@@ -106,6 +108,22 @@ void TestPackageCreator::validationErrorIsShown()
     QVERIFY(driver.done());
     QCOMPARE(driver.seen, QStringList { QStringLiteral("The package needs a name.") });
     QVERIFY(!QFile::exists(directory_->path() + QStringLiteral("/out.oiv")));
+}
+
+void TestPackageCreator::iconIsExactly128()
+{
+    PackageCreatorDialog dialog;
+    QImage wide(300, 100, QImage::Format_RGB32);
+    wide.fill(Qt::red);
+    const QString file = directory_->path() + QStringLiteral("/wide.png");
+    QVERIFY(wide.save(file));
+    QVERIFY(dialog.setIcon(file));
+    const auto icon = dialog.draft().iconPng;
+    QImage stored;
+    QVERIFY(stored.loadFromData(reinterpret_cast<const uchar *>(icon.data()), static_cast<int>(icon.size()), "PNG"));
+    QCOMPARE(stored.size(), QSize(128, 128));
+    QCOMPARE(stored.pixelColor(64, 64), QColor(Qt::red));
+    QCOMPARE(stored.pixelColor(64, 2).alpha(), 0);
 }
 
 QTEST_MAIN(TestPackageCreator)

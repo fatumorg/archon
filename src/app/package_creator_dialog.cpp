@@ -1,5 +1,6 @@
 #include "app/package_creator_dialog.h"
 
+#include "app/busy.h"
 #include "app/style.h"
 
 #include <QBuffer>
@@ -16,10 +17,10 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPainter>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QSaveFile>
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -117,19 +118,7 @@ QWidget *PackageCreatorDialog::buildPackageTab()
         const QString file = QFileDialog::getOpenFileName(this, tr("Package icon"), QString(), tr("Images (*.png *.jpg *.jpeg *.bmp)"));
         if (file.isEmpty())
             return;
-        QImage image(file);
-        if (image.isNull()) {
-            QMessageBox::warning(this, QStringLiteral("ARCHON"), tr("%1 is not an image ARCHON can read.").arg(file));
-            return;
-        }
-        image = image.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        QByteArray png;
-        QBuffer buffer(&png);
-        buffer.open(QIODevice::WriteOnly);
-        image.save(&buffer, "PNG");
-        const auto bytes = std::as_bytes(std::span(png.constData(), static_cast<std::size_t>(png.size())));
-        icon_.assign(bytes.begin(), bytes.end());
-        iconPreview_->setPixmap(QPixmap::fromImage(image).scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        setIcon(file);
     });
 
     auto *version = new QHBoxLayout;
@@ -266,16 +255,36 @@ PackageDraft PackageCreatorDialog::draft() const
     return { text(name_), major_->value(), minor_->value(), text(tag_), text(author_), text(link_), text(description_), text(historyTitle_), text(history_), text(licence_), headerColor_, blackText_->isChecked(), iconColor_, icon_, items_ };
 }
 
-bool PackageCreatorDialog::createPackage(const QString &file)
+bool PackageCreatorDialog::setIcon(const QString &file)
 {
-    const auto bytes = writeOivPackage(draft());
-    if (!bytes) {
-        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(bytes.error().message));
+    const QImage source(file);
+    if (source.isNull()) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), tr("%1 is not an image ARCHON can read.").arg(file));
         return false;
     }
-    QSaveFile out(file);
-    if (!out.open(QIODevice::WriteOnly) || out.write(reinterpret_cast<const char *>(bytes->data()), static_cast<qint64>(bytes->size())) != static_cast<qint64>(bytes->size()) || !out.commit()) {
-        QMessageBox::warning(this, QStringLiteral("ARCHON"), tr("Cannot write %1.").arg(file));
+    const QImage scaled = source.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QImage icon(iconSide, iconSide, QImage::Format_ARGB32);
+    icon.fill(Qt::transparent);
+    QPainter painter(&icon);
+    painter.drawImage((iconSide - scaled.width()) / 2, (iconSide - scaled.height()) / 2, scaled);
+    painter.end();
+    QByteArray png;
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::WriteOnly);
+    icon.save(&buffer, "PNG");
+    const auto bytes = std::as_bytes(std::span(png.constData(), static_cast<std::size_t>(png.size())));
+    icon_.assign(bytes.begin(), bytes.end());
+    iconPreview_->setPixmap(QPixmap::fromImage(icon).scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    return true;
+}
+
+bool PackageCreatorDialog::createPackage(const QString &file)
+{
+    const PackageDraft current = draft();
+    Result<void> result;
+    runBusy(this, tr("Creating package…"), [&] { result = writeOivPackage(current, file.toStdString()); });
+    if (!result) {
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(result.error().message));
         return false;
     }
     return true;

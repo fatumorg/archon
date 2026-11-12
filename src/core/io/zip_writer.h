@@ -12,14 +12,15 @@ namespace archon {
 
 class ZipWriter {
 public:
-    ZipWriter();
+    explicit ZipWriter(const std::filesystem::path &file);
     ZipWriter(const ZipWriter &) = delete;
     ZipWriter &operator=(const ZipWriter &) = delete;
     ~ZipWriter();
 
     Result<void> add(std::string name, std::vector<std::byte> bytes);
+    Result<void> addDirectory(std::string name);
     Result<void> addFile(std::string name, const std::filesystem::path &file);
-    Result<std::vector<std::byte>> finish();
+    Result<void> finish();
 
 private:
     struct State;
