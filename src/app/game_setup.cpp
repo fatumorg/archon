@@ -1,6 +1,7 @@
 #include "app/game_setup.h"
 
 #include "core/crypto/hash.h"
+#include "core/safety/transaction.h"
 
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -201,7 +202,7 @@ std::optional<GameSession> openSession(QWidget *parent)
         settings().remove(pathSetting);
         return std::nullopt;
     }
-    return GameSession { *install, std::make_shared<const Keys>(std::move(**keys)) };
+    return GameSession { *install, std::make_shared<const Keys>(std::move(**keys)), safetyStore(dataDirectory.toStdString(), install->root) };
 }
 
 }

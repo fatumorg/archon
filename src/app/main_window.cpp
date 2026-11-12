@@ -3,6 +3,7 @@
 #include "app/address_bar.h"
 #include "app/busy.h"
 #include "app/display_format.h"
+#include "app/history_dialog.h"
 #include "app/search_dialog.h"
 #include "app/style.h"
 #include "core/io/ascii.h"
@@ -10,14 +11,18 @@
 #include "core/version.h"
 
 #include <QApplication>
+#include <QDropEvent>
 #include <QCollator>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMimeData>
+#include <QPushButton>
 #include <QMessageBox>
 #include <QSignalBlocker>
 #include <QSplitter>
@@ -107,10 +112,11 @@ bool isInsideArchive(const QString &path)
 
 }
 
-MainWindow::MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, QWidget *parent)
+MainWindow::MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, std::filesystem::path store, QWidget *parent)
     : QMainWindow(parent)
     , root_(std::move(root))
     , keys_(std::move(keys))
+    , store_(std::move(store))
     , browser_(root_, keys_)
 {
     setWindowTitle(QStringLiteral("ARCHON"));
@@ -168,6 +174,7 @@ bool MainWindow::open(const QString &path, bool record)
         forward_.clear();
     }
     current_ = target;
+    inArchive_ = isInArchive(browser_, current_.toStdString());
     nodes_ = std::move(*nodes);
     std::ranges::sort(nodes_, nodeBefore);
     {
@@ -219,12 +226,7 @@ void MainWindow::buildActions()
 
     refreshAction_ = new QAction(loadIcon(QStringLiteral("refresh")), tr("&Refresh"), this);
     refreshAction_->setShortcut(QKeySequence(Qt::Key_F5));
-    connect(refreshAction_, &QAction::triggered, this, [this] {
-        browser_ = GameBrowser(root_, keys_);
-        resetTree();
-        if (!open(current_, false))
-            open(QString(), false);
-    });
+    connect(refreshAction_, &QAction::triggered, this, &MainWindow::reload);
 
     extractAction_ = new QAction(loadIcon(QStringLiteral("extract")), tr("Extract…"), this);
     extractAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
@@ -246,6 +248,59 @@ void MainWindow::buildActions()
 
     aboutAction_ = new QAction(tr("&About ARCHON"), this);
     connect(aboutAction_, &QAction::triggered, this, &MainWindow::showAbout);
+
+    editModeAction_ = new QAction(loadIcon(QStringLiteral("edit")), tr("Edit mode"), this);
+    editModeAction_->setCheckable(true);
+    editModeAction_->setShortcut(QKeySequence(Qt::Key_F6));
+    connect(editModeAction_, &QAction::triggered, this, &MainWindow::setEditMode);
+
+    addAction_ = new QAction(loadIcon(QStringLiteral("add")), tr("&Add…"), this);
+    addAction_->setShortcut(QKeySequence(Qt::Key_Insert));
+    connect(addAction_, &QAction::triggered, this, [this] {
+        const QStringList files = QFileDialog::getOpenFileNames(this, tr("Add files"));
+        if (!files.isEmpty())
+            importFiles(files);
+    });
+
+    newFolderAction_ = new QAction(tr("&New folder…"), this);
+    newFolderAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N));
+    connect(newFolderAction_, &QAction::triggered, this, [this] {
+        const QString name = QInputDialog::getText(this, tr("New folder"), tr("Name:"));
+        if (!name.isEmpty())
+            makeFolder(name);
+    });
+
+    replaceAction_ = new QAction(tr("&Replace…"), this);
+    replaceAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+    connect(replaceAction_, &QAction::triggered, this, [this] {
+        const QString file = QFileDialog::getOpenFileName(this, tr("Replace with"));
+        if (!file.isEmpty())
+            replaceSelection(file);
+    });
+
+    renameAction_ = new QAction(tr("Re&name…"), this);
+    renameAction_->setShortcut(QKeySequence(Qt::Key_F2));
+    connect(renameAction_, &QAction::triggered, this, [this] {
+        const QStringList names = selectedNames();
+        if (names.size() != 1)
+            return;
+        const QString name = QInputDialog::getText(this, tr("Rename"), tr("New name:"), QLineEdit::Normal, names.first());
+        if (!name.isEmpty() && name != names.first())
+            renameSelection(name);
+    });
+
+    deleteAction_ = new QAction(loadIcon(QStringLiteral("delete")), tr("&Delete"), this);
+    deleteAction_->setShortcut(QKeySequence(QKeySequence::Delete));
+    connect(deleteAction_, &QAction::triggered, this, &MainWindow::deleteSelection);
+
+    copyToModsAction_ = new QAction(tr("Copy to \"mods\" folder"), this);
+    connect(copyToModsAction_, &QAction::triggered, this, &MainWindow::copySelectionToMods);
+
+    rebuildAction_ = new QAction(loadIcon(QStringLiteral("rebuild")), tr("Re&build"), this);
+    connect(rebuildAction_, &QAction::triggered, this, &MainWindow::rebuildCurrentArchive);
+
+    historyAction_ = new QAction(tr("Change &history…"), this);
+    connect(historyAction_, &QAction::triggered, this, &MainWindow::openHistory);
 }
 
 void MainWindow::buildNavigationRow()
@@ -287,13 +342,30 @@ void MainWindow::buildNavigationRow()
 
     rowLayout->addWidget(back);
     rowLayout->addWidget(forward);
+    auto *editMode = new QToolButton(row);
+    editMode->setObjectName(QStringLiteral("editModeButton"));
+    editMode->setDefaultAction(editModeAction_);
+    editMode->setIconSize(QSize(20, 20));
+    editMode->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    editMode->setFixedHeight(30);
+
     rowLayout->addWidget(address_, 1);
+    rowLayout->addWidget(editMode);
     rowLayout->addWidget(filter_);
 
     auto *menus = new QMenuBar(top);
     QMenu *file = menus->addMenu(tr("&File"));
+    file->addAction(rebuildAction_);
+    file->addSeparator();
     file->addAction(exitAction_);
     QMenu *edit = menus->addMenu(tr("&Edit"));
+    edit->addAction(addAction_);
+    edit->addAction(newFolderAction_);
+    edit->addAction(replaceAction_);
+    edit->addAction(renameAction_);
+    edit->addAction(deleteAction_);
+    edit->addAction(copyToModsAction_);
+    edit->addSeparator();
     edit->addAction(extractAction_);
     edit->addSeparator();
     edit->addAction(selectAllAction_);
@@ -305,6 +377,7 @@ void MainWindow::buildNavigationRow()
     view->addAction(refreshAction_);
     QMenu *tools = menus->addMenu(tr("&Tools"));
     tools->addAction(searchAction_);
+    tools->addAction(historyAction_);
     QMenu *help = menus->addMenu(tr("&Help"));
     help->addAction(aboutAction_);
 
@@ -322,6 +395,10 @@ void MainWindow::buildNavigationRow()
     bar->addSeparator();
     bar->addAction(extractAction_);
     bar->addAction(searchAction_);
+    bar->addSeparator();
+    bar->addAction(addAction_);
+    bar->addAction(deleteAction_);
+    bar->addAction(rebuildAction_);
     setContextMenuPolicy(Qt::NoContextMenu);
 }
 
@@ -360,6 +437,8 @@ void MainWindow::buildViews()
     connect(list_, &QTreeWidget::itemActivated, this, &MainWindow::activate);
     connect(list_, &QTreeWidget::itemSelectionChanged, this, &MainWindow::updateState);
     connect(list_, &QTreeWidget::customContextMenuRequested, this, &MainWindow::showListMenu);
+    list_->viewport()->setAcceptDrops(true);
+    list_->viewport()->installEventFilter(this);
 
     auto *splitter = new QSplitter(this);
     splitter->addWidget(tree_);
@@ -464,6 +543,15 @@ void MainWindow::updateState()
     forwardAction_->setEnabled(!forward_.isEmpty());
     upAction_->setEnabled(!current_.isEmpty());
     extractAction_->setEnabled(selected != 0);
+    const bool inMods = isInMods(current_.toStdString());
+    const bool folders = selectionHasFolder();
+    addAction_->setEnabled(editMode_);
+    newFolderAction_->setEnabled(editMode_);
+    replaceAction_->setEnabled(editMode_ && selected == 1 && !folders);
+    renameAction_->setEnabled(editMode_ && selected == 1 && inArchive_);
+    deleteAction_->setEnabled(editMode_ && selected != 0 && (inArchive_ || !folders));
+    copyToModsAction_->setEnabled(editMode_ && !inMods && (inArchive_ || (selected != 0 && !folders)));
+    rebuildAction_->setEnabled(editMode_ && inArchive_);
 }
 
 void MainWindow::activate(QTreeWidgetItem *item)
@@ -554,7 +642,232 @@ void MainWindow::showListMenu(const QPoint &position)
     if (nodes_[static_cast<std::size_t>(item->data(0, nodeRole).toInt())].kind != NodeKind::File)
         menu.addAction(openAction_);
     menu.addAction(extractAction_);
+    menu.addSeparator();
+    menu.addAction(replaceAction_);
+    menu.addAction(renameAction_);
+    menu.addAction(deleteAction_);
+    menu.addAction(copyToModsAction_);
     menu.exec(list_->viewport()->mapToGlobal(position));
+}
+
+bool MainWindow::editMode() const
+{
+    return editMode_;
+}
+
+void MainWindow::setEditMode(bool on)
+{
+    const auto show = [this] {
+        const QSignalBlocker blocker(editModeAction_);
+        editModeAction_->setChecked(editMode_);
+    };
+    show();
+    if (on && !editMode_) {
+        on = QMessageBox::question(this, QStringLiteral("ARCHON"),
+                 tr("Edit mode lets you change game files. Every change is backed up and can be rolled back from Tools > Change history. Turn edit mode on?"))
+            == QMessageBox::Yes;
+    }
+    editMode_ = on;
+    show();
+    updateState();
+}
+
+QStringList MainWindow::selectedNames() const
+{
+    QStringList names;
+    for (const QTreeWidgetItem *item : list_->selectedItems())
+        names.append(item->text(0));
+    return names;
+}
+
+bool MainWindow::selectionHasFolder() const
+{
+    const auto selected = list_->selectedItems();
+    return std::ranges::any_of(selected, [this](const QTreeWidgetItem *item) {
+        return nodes_[static_cast<std::size_t>(item->data(0, nodeRole).toInt())].kind == NodeKind::Folder;
+    });
+}
+
+bool MainWindow::runEdit(const QString &label, const std::function<Result<void>(GameEditor &)> &work)
+{
+    Result<void> result;
+    runBusy(this, label, [&] {
+        GameEditor editor(root_, keys_, store_);
+        result = work(editor);
+    });
+    reload();
+    if (!result)
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), QString::fromStdString(result.error().message));
+    return result.has_value();
+}
+
+bool MainWindow::prepareArchiveEdit()
+{
+    if (!editMode_)
+        return false;
+    if (!inArchive_ || isInMods(current_.toStdString()))
+        return true;
+    QMessageBox box(QMessageBox::Question, QStringLiteral("ARCHON"), tr("This archive is in the game folder."), QMessageBox::NoButton, this);
+    box.setInformativeText(tr("Edit a copy in the \"mods\" folder, or change the game folder itself?"));
+    QPushButton *copy = box.addButton(tr("Copy to \"mods\" folder"), QMessageBox::AcceptRole);
+    QPushButton *inPlace = box.addButton(tr("Edit in game folder"), QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(copy);
+    box.exec();
+    if (box.clickedButton() == inPlace)
+        return true;
+    if (box.clickedButton() != copy)
+        return false;
+    std::string mapped;
+    const std::string path = current_.toStdString();
+    if (!runEdit(tr("Copying to \"mods\" folder…"), [&](GameEditor &editor) -> Result<void> {
+            auto copied = editor.copyToMods(path);
+            if (!copied)
+                return std::unexpected(copied.error());
+            mapped = std::move(*copied);
+            return {};
+        }))
+        return false;
+    return navigate(QString::fromStdString(mapped));
+}
+
+void MainWindow::importFiles(const QStringList &files)
+{
+    if (files.isEmpty() || !prepareArchiveEdit())
+        return;
+    int existing = 0;
+    std::vector<std::filesystem::path> sources;
+    for (const QString &file : files) {
+        sources.emplace_back(file.toStdString());
+        const std::string name = sources.back().filename().string();
+        existing += std::ranges::count_if(nodes_, [&name](const BrowserNode &node) { return asciiEqualIgnoreCase(node.name, name); }) != 0 ? 1 : 0;
+    }
+    if (existing != 0
+        && QMessageBox::question(this, QStringLiteral("ARCHON"),
+               existing == 1 ? tr("1 item with the same name already exists here and will be replaced. Continue?")
+                             : tr("%1 items with the same names already exist here and will be replaced. Continue?").arg(existing))
+            != QMessageBox::Yes)
+        return;
+    const std::string folder = current_.toStdString();
+    runEdit(tr("Adding files…"), [&](GameEditor &editor) { return editor.import(folder, sources); });
+}
+
+void MainWindow::replaceSelection(const QString &file)
+{
+    const QStringList names = selectedNames();
+    if (names.size() != 1 || !prepareArchiveEdit())
+        return;
+    const std::string target = childPath(names.first()).toStdString();
+    runEdit(tr("Replacing…"), [&](GameEditor &editor) { return editor.replace(target, file.toStdString()); });
+}
+
+void MainWindow::deleteSelection()
+{
+    const QStringList names = selectedNames();
+    if (names.isEmpty() || !editMode_)
+        return;
+    const QString question = names.size() == 1 ? tr("Delete \"%1\"?").arg(names.first()) : tr("Delete %1 selected items?").arg(names.size());
+    if (QMessageBox::question(this, QStringLiteral("ARCHON"), question) != QMessageBox::Yes || !prepareArchiveEdit())
+        return;
+    std::vector<std::string> paths;
+    for (const QString &name : names)
+        paths.push_back(childPath(name).toStdString());
+    runEdit(tr("Deleting…"), [&](GameEditor &editor) { return editor.remove(paths); });
+}
+
+void MainWindow::makeFolder(const QString &name)
+{
+    if (!prepareArchiveEdit())
+        return;
+    const std::string folder = current_.toStdString();
+    runEdit(tr("Creating folder…"), [&](GameEditor &editor) { return editor.makeFolder(folder, name.toStdString()); });
+}
+
+void MainWindow::renameSelection(const QString &name)
+{
+    const QStringList names = selectedNames();
+    if (names.size() != 1 || !prepareArchiveEdit())
+        return;
+    const std::string target = childPath(names.first()).toStdString();
+    runEdit(tr("Renaming…"), [&](GameEditor &editor) { return editor.rename(target, name.toStdString()); });
+}
+
+void MainWindow::rebuildCurrentArchive()
+{
+    if (!prepareArchiveEdit())
+        return;
+    const std::string archive = current_.toStdString();
+    runEdit(tr("Rebuilding…"), [&](GameEditor &editor) { return editor.rebuild(archive); });
+}
+
+void MainWindow::copySelectionToMods()
+{
+    if (!editMode_)
+        return;
+    std::vector<std::string> paths;
+    if (inArchive_) {
+        paths.push_back(current_.toStdString());
+    } else {
+        for (const QString &name : selectedNames())
+            paths.push_back(childPath(name).toStdString());
+    }
+    std::string mapped;
+    const bool copied = runEdit(tr("Copying to \"mods\" folder…"), [&](GameEditor &editor) -> Result<void> {
+        for (const std::string &path : paths) {
+            auto done = editor.copyToMods(path);
+            if (!done)
+                return std::unexpected(done.error());
+            mapped = std::move(*done);
+        }
+        return {};
+    });
+    if (copied && inArchive_)
+        navigate(QString::fromStdString(mapped));
+}
+
+void MainWindow::reload()
+{
+    browser_.forget();
+    resetTree();
+    QString path = current_;
+    while (!path.isEmpty() && !browser_.canonicalPath(path.toStdString()))
+        path = parentPath(path);
+    open(path, false);
+}
+
+void MainWindow::openHistory()
+{
+    HistoryDialog dialog(store_, this);
+    connect(&dialog, &HistoryDialog::rolledBack, this, &MainWindow::reload);
+    dialog.exec();
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched != list_->viewport())
+        return QMainWindow::eventFilter(watched, event);
+    if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
+        auto *drag = static_cast<QDropEvent *>(event);
+        if (editMode_ && drag->mimeData()->hasUrls()) {
+            drag->acceptProposedAction();
+            return true;
+        }
+        return false;
+    }
+    if (event->type() == QEvent::Drop) {
+        auto *drop = static_cast<QDropEvent *>(event);
+        QStringList files;
+        for (const QUrl &url : drop->mimeData()->urls()) {
+            if (url.isLocalFile())
+                files.append(url.toLocalFile());
+        }
+        if (!editMode_ || files.isEmpty())
+            return false;
+        drop->acceptProposedAction();
+        importFiles(files);
+        return true;
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 }

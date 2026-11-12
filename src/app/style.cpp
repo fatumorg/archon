@@ -36,12 +36,15 @@ QStatusBar QLabel { border: 1px solid #c8c8c8; padding: 1px 6px; }
 QLineEdit { border: 1px solid #c8c8c8; padding: 3px 6px; background: #ffffff; selection-background-color: #3399ff; selection-color: #ffffff; }
 QLineEdit:focus { border-color: #3399ff; }
 QSplitter::handle { background: #ffffff; }
-QPushButton { border: 1px solid #adadad; background: #e1e1e1; padding: 4px 16px; min-width: 60px; }
+QPushButton { border: 1px solid #adadad; background: #e1e1e1; padding: 4px 16px; }
 QPushButton:hover { border-color: #0078d7; background: #e5f1fb; }
 QPushButton:pressed { background: #cce4f7; }
 QPushButton:disabled { color: #838383; background: #ececec; border-color: #c8c8c8; }
 #navigationRow { background: #ffffff; }
 #navigationRow QToolButton { border: none; background: transparent; }
+#navigationRow QToolButton#editModeButton { border: 1px solid transparent; padding: 2px 6px; }
+#navigationRow QToolButton#editModeButton:hover { background: #e5f3ff; border-color: #cce8ff; }
+#navigationRow QToolButton#editModeButton:checked { background: #cce8ff; border-color: #99d1ff; }
 #addressBar { border: 1px solid #c8c8c8; background: #ffffff; }
 #addressBar QToolButton { border: 1px solid transparent; padding: 3px 5px; }
 #addressBar QToolButton:hover { background: #e5f3ff; border-color: #cce8ff; }

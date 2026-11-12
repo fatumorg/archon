@@ -1,6 +1,12 @@
 #include "app/address_bar.h"
+#include "app/busy.h"
+#include "app/history_dialog.h"
 #include "app/main_window.h"
 #include "app/search_dialog.h"
+#include "app/style.h"
+#include "core/game/game_browser.h"
+#include "core/rpf/rpf_reader.h"
+#include "core/safety/transaction.h"
 #include "support/browse_fixture.h"
 #include "support/temp_files.h"
 
@@ -9,6 +15,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QStatusBar>
@@ -18,7 +26,9 @@
 #include <QToolButton>
 #include <QTreeWidget>
 
+#include <deque>
 #include <fstream>
+#include <thread>
 
 using namespace archon;
 using namespace archon::test;
@@ -50,6 +60,80 @@ QStringList statusTexts(const MainWindow &window)
     return texts;
 }
 
+QString plain(QString text)
+{
+    return text.remove(QLatin1Char('&'));
+}
+
+class ModalDriver : public QObject {
+public:
+    explicit ModalDriver(QStringList buttons)
+        : buttons_(buttons.begin(), buttons.end())
+    {
+        timer_.setInterval(20);
+        connect(&timer_, &QTimer::timeout, this, &ModalDriver::poll);
+        timer_.start();
+    }
+
+    bool done() const
+    {
+        return buttons_.empty();
+    }
+
+    QStringList unexpected;
+    QStringList seen;
+
+private:
+    void poll()
+    {
+        QWidget *modal = QApplication::activeModalWidget();
+        if (modal == nullptr || qobject_cast<QProgressDialog *>(modal) != nullptr || modal == last_)
+            return;
+        if (buttons_.empty()) {
+            auto *box = qobject_cast<QMessageBox *>(modal);
+            unexpected.append(box != nullptr ? box->text() : modal->windowTitle());
+            last_ = modal;
+            QTimer::singleShot(0, modal, &QWidget::close);
+            return;
+        }
+        for (QAbstractButton *button : modal->findChildren<QAbstractButton *>()) {
+            if (button->isVisible() && button->isEnabled() && plain(button->text()) == buttons_.front()) {
+                if (auto *box = qobject_cast<QMessageBox *>(modal))
+                    seen.append(box->text());
+                buttons_.pop_front();
+                last_ = button->text() == QStringLiteral("Close") ? modal : nullptr;
+                QTimer::singleShot(0, button, &QAbstractButton::click);
+                return;
+            }
+        }
+    }
+
+    std::deque<QString> buttons_;
+    QTimer timer_;
+    QWidget *last_ = nullptr;
+};
+
+QAction *actionNamed(QWidget *window, const QString &text)
+{
+    for (QAction *action : window->findChildren<QAction *>()) {
+        if (action->text() == text)
+            return action;
+    }
+    return nullptr;
+}
+
+std::string entryText(const std::filesystem::path &archive, std::string_view path)
+{
+    const auto reader = RpfReader::open(openFileSource(archive), archive.filename().string(), nullptr);
+    if (!reader)
+        return "<" + reader.error().message + ">";
+    const auto index = reader->archive().find(path);
+    if (!index)
+        return "<missing>";
+    const auto data = reader->fileData(*index);
+    return data ? std::string(reinterpret_cast<const char *>(data->data()), data->size()) : "<unreadable>";
+}
+
 }
 
 class TestMainWindow : public QObject {
@@ -72,10 +156,39 @@ private slots:
     void revealSelectsEntry();
     void actionsAreExactlyTheWorkingSet();
     void searchDialogFindsEntries();
+    void editActionsDisabledUntilEditMode();
+    void editModeNeedsConfirmation();
+    void importIntoModsArchive();
+    void editOutsideModsOffersCopy();
+    void deleteRenameNewFolderReplace();
+    void rebuildKeepsEntries();
+    void historyRollbackRestores();
+    void recoverUnfinishedRollsBack();
+    void styledMessageBoxButtonsFitTheirText();
+    void uncancellableWorkShowsNoCancelButton();
 
 private:
+    void turnOnEditMode()
+    {
+        ModalDriver driver({ QStringLiteral("Yes") });
+        window_->setEditMode(true);
+        QVERIFY(window_->editMode());
+    }
+    void copyToMods()
+    {
+        std::filesystem::create_directories(root_ / "mods");
+        std::filesystem::copy_file(root_ / "common.rpf", root_ / "mods" / "common.rpf");
+    }
+    std::filesystem::path source(const std::string &name, std::string_view content)
+    {
+        const std::filesystem::path file = pathOf(*directory_) / "sources" / name;
+        writeFile(file, content);
+        return file;
+    }
+
     std::unique_ptr<QTemporaryDir> directory_;
     std::filesystem::path root_;
+    std::filesystem::path store_;
     std::unique_ptr<MainWindow> window_;
     QTreeWidget *list_ = nullptr;
     QTreeWidget *tree_ = nullptr;
@@ -85,8 +198,9 @@ void TestMainWindow::init()
 {
     directory_ = std::make_unique<QTemporaryDir>();
     root_ = pathOf(*directory_) / "game";
+    store_ = pathOf(*directory_) / "store";
     writeBrowseFixture(root_);
-    window_ = std::make_unique<MainWindow>(root_, nullptr);
+    window_ = std::make_unique<MainWindow>(root_, nullptr, store_);
     window_->show();
     QVERIFY(QTest::qWaitForWindowExposed(window_.get()));
     list_ = window_->findChild<QTreeWidget *>(QStringLiteral("fileList"));
@@ -326,7 +440,8 @@ void TestMainWindow::actionsAreExactlyTheWorkingSet()
     }
     texts.removeDuplicates();
     texts.sort();
-    QStringList expected { "E&xit", "Extract…", "Open", "Select &all", "&Refresh", "&Up one level", "&Back", "&Forward", "&Search…", "&About ARCHON" };
+    QStringList expected { "E&xit", "Extract…", "Open", "Select &all", "&Refresh", "&Up one level", "&Back", "&Forward", "&Search…", "&About ARCHON",
+        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…" };
     expected.sort();
     QCOMPARE(texts, expected);
 }
@@ -355,6 +470,270 @@ void TestMainWindow::searchDialogFindsEntries()
     pattern->setText(QStringLiteral("nothing-matches"));
     button->click();
     QCOMPARE(results->topLevelItemCount(), 0);
+}
+
+void TestMainWindow::editActionsDisabledUntilEditMode()
+{
+    copyToMods();
+    QVERIFY(window_->navigate(QStringLiteral("mods/common.rpf/data")));
+    list_->selectAll();
+    const QStringList editing { "&Add…", "&New folder…", "&Delete", "Re&build" };
+    for (const QString &text : editing)
+        QVERIFY2(!actionNamed(window_.get(), text)->isEnabled(), qPrintable(text));
+    turnOnEditMode();
+    list_->clearSelection();
+    row(list_, QStringLiteral("a.txt"))->setSelected(true);
+    for (const QString &text : editing + QStringList { "&Replace…", "Re&name…" })
+        QVERIFY2(actionNamed(window_.get(), text)->isEnabled(), qPrintable(text));
+    QVERIFY(!actionNamed(window_.get(), QStringLiteral("Copy to \"mods\" folder"))->isEnabled());
+
+    QVERIFY(window_->navigate(QString()));
+    row(list_, QStringLiteral("update"))->setSelected(true);
+    QVERIFY(!actionNamed(window_.get(), QStringLiteral("Re&build"))->isEnabled());
+    QVERIFY(!actionNamed(window_.get(), QStringLiteral("Re&name…"))->isEnabled());
+    QVERIFY(!actionNamed(window_.get(), QStringLiteral("&Delete"))->isEnabled());
+    QVERIFY(actionNamed(window_.get(), QStringLiteral("&Add…"))->isEnabled());
+}
+
+void TestMainWindow::editModeNeedsConfirmation()
+{
+    QAction *edit = actionNamed(window_.get(), QStringLiteral("Edit mode"));
+    QVERIFY(edit != nullptr && edit->isCheckable());
+    QCOMPARE(edit->shortcut(), QKeySequence(Qt::Key_F6));
+    QVERIFY(!window_->editMode());
+    {
+        bool checkedWhileAsking = false;
+        QTimer probe;
+        probe.setInterval(5);
+        connect(&probe, &QTimer::timeout, this, [&] {
+            if (qobject_cast<QMessageBox *>(QApplication::activeModalWidget()) != nullptr)
+                checkedWhileAsking = checkedWhileAsking || edit->isChecked();
+        });
+        probe.start();
+        ModalDriver driver({ QStringLiteral("No") });
+        edit->trigger();
+        QVERIFY(driver.done());
+        QVERIFY(!checkedWhileAsking);
+    }
+    QVERIFY(!window_->editMode());
+    QVERIFY(!edit->isChecked());
+    {
+        ModalDriver driver({ QStringLiteral("Yes") });
+        edit->trigger();
+        QVERIFY(driver.done());
+    }
+    QVERIFY(window_->editMode());
+    QVERIFY(edit->isChecked());
+    edit->trigger();
+    QVERIFY(!window_->editMode());
+}
+
+void TestMainWindow::importIntoModsArchive()
+{
+    copyToMods();
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("mods/common.rpf/data")));
+    {
+        ModalDriver driver({});
+        window_->importFiles({ QString::fromStdString(source("added.txt", "new file").string()) });
+        QVERIFY2(driver.unexpected.isEmpty(), qPrintable(driver.unexpected.join(QLatin1Char('\n'))));
+    }
+    QVERIFY(row(list_, QStringLiteral("added.txt")) != nullptr);
+    QCOMPARE(entryText(root_ / "mods" / "common.rpf", "data/added.txt"), std::string("new file"));
+
+    ModalDriver overwrite({ QStringLiteral("Yes") });
+    window_->importFiles({ QString::fromStdString(source("A.TXT", "overwritten").string()) });
+    QVERIFY(overwrite.done());
+    QCOMPARE(overwrite.seen, QStringList { QStringLiteral("1 item with the same name already exists here and will be replaced. Continue?") });
+    QCOMPARE(entryText(root_ / "mods" / "common.rpf", "data/a.txt"), std::string("overwritten"));
+}
+
+void TestMainWindow::editOutsideModsOffersCopy()
+{
+    const auto original = readFile(root_ / "common.rpf");
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("common.rpf/data")));
+    ModalDriver driver({ QStringLiteral("Copy to \"mods\" folder") });
+    window_->importFiles({ QString::fromStdString(source("added.txt", "new file").string()) });
+    QVERIFY(driver.done());
+    QVERIFY2(driver.unexpected.isEmpty(), qPrintable(driver.unexpected.join(QLatin1Char('\n'))));
+    QCOMPARE(window_->currentPath(), QStringLiteral("mods/common.rpf/data"));
+    QVERIFY(row(list_, QStringLiteral("added.txt")) != nullptr);
+    QCOMPARE(readFile(root_ / "common.rpf"), original);
+    QCOMPARE(entryText(root_ / "mods" / "common.rpf", "data/added.txt"), std::string("new file"));
+}
+
+void TestMainWindow::deleteRenameNewFolderReplace()
+{
+    copyToMods();
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("mods/common.rpf/data")));
+    {
+        ModalDriver driver({});
+        window_->makeFolder(QStringLiteral("made"));
+        QVERIFY(row(list_, QStringLiteral("made")) != nullptr);
+
+        row(list_, QStringLiteral("a.txt"))->setSelected(true);
+        window_->renameSelection(QStringLiteral("renamed.txt"));
+        QVERIFY(row(list_, QStringLiteral("a.txt")) == nullptr);
+        QVERIFY(row(list_, QStringLiteral("renamed.txt")) != nullptr);
+
+        list_->clearSelection();
+        row(list_, QStringLiteral("renamed.txt"))->setSelected(true);
+        window_->replaceSelection(QString::fromStdString(source("replacement.txt", "replaced").string()));
+        QCOMPARE(entryText(root_ / "mods" / "common.rpf", "data/renamed.txt"), std::string("replaced"));
+        QVERIFY2(driver.unexpected.isEmpty(), qPrintable(driver.unexpected.join(QLatin1Char('\n'))));
+    }
+    list_->clearSelection();
+    row(list_, QStringLiteral("b.bin"))->setSelected(true);
+    {
+        ModalDriver driver({ QStringLiteral("No") });
+        window_->deleteSelection();
+        QVERIFY(driver.done());
+    }
+    QVERIFY(row(list_, QStringLiteral("b.bin")) != nullptr);
+    row(list_, QStringLiteral("b.bin"))->setSelected(true);
+    {
+        ModalDriver driver({ QStringLiteral("Yes") });
+        window_->deleteSelection();
+        QVERIFY(driver.done());
+    }
+    QVERIFY(row(list_, QStringLiteral("b.bin")) == nullptr);
+    QCOMPARE(listTransactions(store_).size(), std::size_t(4));
+}
+
+void TestMainWindow::rebuildKeepsEntries()
+{
+    copyToMods();
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("mods/common.rpf")));
+    {
+        ModalDriver driver({});
+        window_->importFiles({ QString::fromStdString(source("big.txt", std::string(300000, 'k')).string()) });
+        QVERIFY2(driver.unexpected.isEmpty(), qPrintable(driver.unexpected.join(QLatin1Char('\n'))));
+    }
+    row(list_, QStringLiteral("big.txt"))->setSelected(true);
+    {
+        ModalDriver confirm({ QStringLiteral("Yes") });
+        window_->deleteSelection();
+        QVERIFY(confirm.done());
+    }
+    const auto edited = std::filesystem::file_size(root_ / "mods" / "common.rpf");
+    ModalDriver driver({});
+    window_->rebuildCurrentArchive();
+    QVERIFY2(driver.unexpected.isEmpty(), qPrintable(driver.unexpected.join(QLatin1Char('\n'))));
+    QVERIFY(std::filesystem::file_size(root_ / "mods" / "common.rpf") < edited);
+    QCOMPARE(window_->currentPath(), QStringLiteral("mods/common.rpf"));
+    QCOMPARE(list_->topLevelItemCount(), 3);
+    QCOMPARE(entryText(root_ / "mods" / "common.rpf", "data/a.txt"), std::string("hello"));
+}
+
+void TestMainWindow::historyRollbackRestores()
+{
+    copyToMods();
+    turnOnEditMode();
+    QVERIFY(window_->navigate(QStringLiteral("mods/common.rpf/data")));
+    {
+        ModalDriver driver({});
+        window_->importFiles({ QString::fromStdString(source("added.txt", "new file").string()) });
+        window_->makeFolder(QStringLiteral("made"));
+    }
+    QVERIFY(row(list_, QStringLiteral("added.txt")) != nullptr);
+
+    {
+        HistoryDialog dialog(store_);
+        auto *history = dialog.findChild<QTreeWidget *>(QStringLiteral("historyList"));
+        QVERIFY(history != nullptr);
+        QCOMPARE(history->topLevelItemCount(), 2);
+        QCOMPARE(history->topLevelItem(1)->text(1), QStringLiteral("Add 1 file to mods/common.rpf/data"));
+        history->setCurrentItem(history->topLevelItem(1));
+        ModalDriver driver({ QStringLiteral("No") });
+        auto *rollBack = dialog.findChild<QPushButton *>(QStringLiteral("rollBackButton"));
+        QVERIFY(rollBack != nullptr);
+        rollBack->click();
+        QCOMPARE(driver.seen, QStringList { QStringLiteral("Roll back \"Add 1 file to mods/common.rpf/data\"?\n1 newer change will be rolled back with it.") });
+    }
+
+    ModalDriver driver({ QStringLiteral("Roll back"), QStringLiteral("Yes"), QStringLiteral("Close") });
+    actionNamed(window_.get(), QStringLiteral("Change &history…"))->trigger();
+    QVERIFY(driver.done());
+    QCOMPARE(driver.seen, QStringList { QStringLiteral("Roll back \"New folder mods/common.rpf/data/made\"?") });
+    QVERIFY2(driver.unexpected.isEmpty(), qPrintable(driver.unexpected.join(QLatin1Char('\n'))));
+    QVERIFY(row(list_, QStringLiteral("made")) == nullptr);
+    QVERIFY(row(list_, QStringLiteral("added.txt")) != nullptr);
+    QCOMPARE(listTransactions(store_).size(), std::size_t(1));
+}
+
+void TestMainWindow::recoverUnfinishedRollsBack()
+{
+    window_.reset();
+    const auto original = readFile(root_ / "GTA5.exe");
+    {
+        auto transaction = Transaction::begin(store_, root_, "Replace GTA5.exe");
+        QVERIFY(transaction);
+        QVERIFY(transaction->writeAt(root_ / "GTA5.exe", 0, std::as_bytes(std::span("XXXX", 4))));
+        [[maybe_unused]] auto *abandoned = new Transaction(std::move(*transaction));
+    }
+    QVERIFY(readFile(root_ / "GTA5.exe") != original);
+    {
+        ModalDriver driver({ QStringLiteral("Quit") });
+        QVERIFY(!recoverUnfinished(store_, nullptr));
+        QVERIFY(driver.done());
+    }
+    QCOMPARE(listTransactions(store_).size(), std::size_t(1));
+    {
+        ModalDriver driver({ QStringLiteral("Roll back") });
+        QVERIFY(recoverUnfinished(store_, nullptr));
+        QVERIFY(driver.done());
+    }
+    QCOMPARE(readFile(root_ / "GTA5.exe"), original);
+    QVERIFY(listTransactions(store_).empty());
+    QVERIFY(recoverUnfinished(store_, nullptr));
+}
+
+void TestMainWindow::styledMessageBoxButtonsFitTheirText()
+{
+    window_.reset();
+    applyStyle(*qobject_cast<QApplication *>(QCoreApplication::instance()));
+    QMessageBox box(QMessageBox::Question, QStringLiteral("ARCHON"), QStringLiteral("This archive is in the game folder."));
+    const QStringList texts { QStringLiteral("Copy to \"mods\" folder"), QStringLiteral("Edit in game folder") };
+    for (const QString &text : texts)
+        box.addButton(text, QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&box));
+    for (QAbstractButton *button : box.findChildren<QAbstractButton *>()) {
+        if (!button->isVisible())
+            continue;
+        const int needed = button->fontMetrics().horizontalAdvance(plain(button->text())) + 2 * 16;
+        QVERIFY2(button->width() >= needed, qPrintable(QStringLiteral("%1: %2 < %3").arg(button->text()).arg(button->width()).arg(needed)));
+    }
+}
+
+void TestMainWindow::uncancellableWorkShowsNoCancelButton()
+{
+    int dialogs = 0;
+    int cancelButtons = 0;
+    QTimer probe;
+    probe.setInterval(10);
+    connect(&probe, &QTimer::timeout, this, [&] {
+        auto *progress = qobject_cast<QProgressDialog *>(QApplication::activeModalWidget());
+        if (progress == nullptr)
+            return;
+        ++dialogs;
+        for (const QPushButton *button : progress->findChildren<QPushButton *>())
+            cancelButtons += button->isVisible() ? 1 : 0;
+    });
+    probe.start();
+    bool ran = false;
+    runBusy(window_.get(), QStringLiteral("Working…"), [&ran] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        ran = true;
+    });
+    probe.stop();
+    QVERIFY(ran);
+    QVERIFY(dialogs > 0);
+    QCOMPARE(cancelButtons, 0);
 }
 
 QTEST_MAIN(TestMainWindow)

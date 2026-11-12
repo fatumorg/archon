@@ -13,6 +13,7 @@ namespace archon {
 struct GameSession {
     GameInstall install;
     std::shared_ptr<const Keys> keys;
+    std::filesystem::path store;
 };
 
 Result<void> checkMagic(std::span<const std::byte> bytes);

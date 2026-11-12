@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/game/game_browser.h"
+#include "core/game/game_edit.h"
 
 #include <QMainWindow>
 
@@ -17,12 +17,20 @@ class AddressBar;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, QWidget *parent = nullptr);
+    MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, std::filesystem::path store, QWidget *parent = nullptr);
 
     QString currentPath() const;
     bool navigate(const QString &path);
     bool reveal(const QString &path);
     void extractSelection(const QString &outputDirectory);
+    bool editMode() const;
+    void setEditMode(bool on);
+    void importFiles(const QStringList &files);
+    void replaceSelection(const QString &file);
+    void deleteSelection();
+    void makeFolder(const QString &name);
+    void renameSelection(const QString &name);
+    void rebuildCurrentArchive();
 
 private:
     bool open(const QString &path, bool record);
@@ -41,10 +49,21 @@ private:
     void showAbout();
     void showListMenu(const QPoint &position);
     QString childPath(const QString &name) const;
+    QStringList selectedNames() const;
+    bool selectionHasFolder() const;
+    bool prepareArchiveEdit();
+    bool runEdit(const QString &label, const std::function<Result<void>(GameEditor &)> &work);
+    void reload();
+    void copySelectionToMods();
+    void openHistory();
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
     std::filesystem::path root_;
     std::shared_ptr<const Keys> keys_;
+    std::filesystem::path store_;
     GameBrowser browser_;
+    bool editMode_ = false;
+    bool inArchive_ = false;
     QString current_;
     QStringList back_;
     QStringList forward_;
@@ -67,6 +86,15 @@ private:
     QAction *searchAction_ = nullptr;
     QAction *exitAction_ = nullptr;
     QAction *aboutAction_ = nullptr;
+    QAction *editModeAction_ = nullptr;
+    QAction *addAction_ = nullptr;
+    QAction *newFolderAction_ = nullptr;
+    QAction *replaceAction_ = nullptr;
+    QAction *renameAction_ = nullptr;
+    QAction *deleteAction_ = nullptr;
+    QAction *copyToModsAction_ = nullptr;
+    QAction *rebuildAction_ = nullptr;
+    QAction *historyAction_ = nullptr;
 };
 
 }

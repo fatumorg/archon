@@ -3,6 +3,7 @@ add_library(archon-app STATIC
     busy.cpp
     display_format.cpp
     game_setup.cpp
+    history_dialog.cpp
     main_window.cpp
     search_dialog.cpp
     style.cpp

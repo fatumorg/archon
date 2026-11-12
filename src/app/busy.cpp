@@ -8,10 +8,14 @@
 
 namespace archon {
 
-bool runBusy(QWidget *parent, const QString &label, const std::function<void(const std::atomic<bool> &cancel)> &work)
+namespace {
+
+bool run(QWidget *parent, const QString &label, bool cancellable, const std::function<void(const std::atomic<bool> &cancel)> &work)
 {
     std::atomic<bool> cancel { false };
     QProgressDialog dialog(label, QObject::tr("Cancel"), 0, 0, parent);
+    if (!cancellable)
+        dialog.setCancelButton(nullptr);
     dialog.setWindowTitle(QStringLiteral("ARCHON"));
     dialog.setWindowModality(Qt::ApplicationModal);
     dialog.setAutoClose(false);
@@ -27,6 +31,18 @@ bool runBusy(QWidget *parent, const QString &label, const std::function<void(con
     loop.exec();
     thread->wait();
     return !cancel;
+}
+
+}
+
+bool runBusy(QWidget *parent, const QString &label, const std::function<void(const std::atomic<bool> &cancel)> &work)
+{
+    return run(parent, label, true, work);
+}
+
+void runBusy(QWidget *parent, const QString &label, const std::function<void()> &work)
+{
+    run(parent, label, false, [&work](const std::atomic<bool> &) { work(); });
 }
 
 }
