@@ -2,6 +2,8 @@
 
 ## 0.1.0-beta3
 
+- GTA V Enhanced: File > Choose game switches between Legacy and Enhanced; Enhanced texture dictionaries, including their sRGB and R16 formats, are read and written.
+- Text editor for `.meta`, `.xml`, `.dat` and other text files, with line numbers; keeps encoding, byte-order mark and line endings when saving.
 - Application icon and desktop entry.
 - Main window: navigation tree, file list, address bar, history, filter box.
 - Search entry names across every archive.

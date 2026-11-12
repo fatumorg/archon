@@ -6,7 +6,11 @@ ARCHON ships no game files and no encryption keys. Keys are derived from your ow
 
 ## Status
 
-Early development. ARCHON browses a GTA V install: folders, archives and nested archives, filtering and searching entry names, and extracting files. Installing mod packages is not built yet.
+Early development. ARCHON browses and edits GTA V Legacy and Enhanced installs: archives and nested archives, texture dictionaries, text metadata, OIV packages, ASI plugins and the Proton prefix. Binary metadata (PSO, RSC META, RBF) and the model preview are not built yet.
+
+## GTA V Enhanced
+
+ARCHON finds both editions. File > Choose game switches between them; the tree, the address bar and the status bar show which one is open. Browsing, editing, textures, the Package Installer and Creator, the ASI Manager (the ASI Loader is `xinput1_4.dll` on Enhanced, `dinput8.dll` on Legacy) and the Proton prefix setup (app 3240220) all work on Enhanced. Enhanced texture dictionaries have their own layout, which ARCHON reads and writes. One Enhanced dictionary, `x64e.rpf/levels/generic/icons.rpf/markers.ytd`, uses an older resource version and does not open.
 
 ## Editing
 
@@ -16,6 +20,10 @@ Editing an archive outside the `mods` folder first offers to copy it there, so t
 
 Every change is written through a journal and backed up before any byte is overwritten. Tools > Change history lists the changes and rolls any of them back, together with every newer one. If ARCHON stops in the middle of a change, it offers to roll it back on the next start. A rollback is refused when the file was changed by something else afterwards, for example by Steam verifying the game.
 
+## Text files
+
+Opening a `.meta`, `.xml`, `.dat`, `.txt`, `.ini`, `.cfg`, `.ide`, `.ipl`, `.log`, `.csv`, `.lua` or `.json` file shows it with line numbers. In edit mode it can be changed and saved; the file keeps its encoding (UTF-8 or Latin-1), byte-order mark and line endings. Saving inside an archive outside `mods` asks first, like every other archive edit.
+
 ## Package Creator
 
 Tools > Package Creator writes an OIV 2.2 package. The Package tab holds the name, version, author, descriptions, licence, header colours and icon; the Content tab lists files to add, each with its target folder in the game (archives included, for example `x64e.rpf/levels/gta5/vehicles.rpf`), and game files to delete. Packages it writes are OIV 2.2 and install with the Package Installer.
@@ -24,7 +32,7 @@ Tools > Package Creator writes an OIV 2.2 package. The Package tab holds the nam
 
 Opening a `.ytd` file shows its textures with a preview. Export saves the selected texture or all of them as DDS or PNG. In edit mode the dictionary can be changed: replace or add textures from DDS files (kept in their own format and mipmaps) or from PNG, JPEG, BMP and TGA images (stored as A8R8G8B8 with generated mipmaps), rename and remove textures, then Save. Saving inside an archive outside `mods` asks first, like every other archive edit. ARCHON has no block-compression encoder, so an imported image is stored uncompressed.
 
-Supported formats: DXT1, DXT3, DXT5, ATI1, ATI2, BC7 and the uncompressed A8R8G8B8, X8R8G8B8, A8B8G8R8, R5G6B5, A1R5G5B5, A8 and L8. Block decoding uses [bcdec](https://github.com/iOrange/bcdec).
+Supported formats: DXT1, DXT3, DXT5, ATI1, ATI2, BC7 and the uncompressed A8R8G8B8, X8R8G8B8, A8B8G8R8, R5G6B5, A1R5G5B5, A8 and L8; on Enhanced also the sRGB forms of DXT1, DXT3, DXT5 and BC7, and R16, which a Legacy dictionary cannot hold. Block decoding uses [bcdec](https://github.com/iOrange/bcdec).
 
 ## Package Installer
 
