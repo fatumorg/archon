@@ -21,6 +21,7 @@ struct DrawableSampleOptions {
 struct DrawableSample {
     std::vector<std::byte> system;
     std::vector<std::byte> graphics;
+    std::size_t embeddedList = 0;
     std::size_t geometry = 0;
     std::size_t vertexBuffer = 0;
     std::size_t declaration = 0;

@@ -9,6 +9,8 @@
 #include <QTest>
 #include <QWheelEvent>
 
+#include <cmath>
+
 using namespace archon;
 
 class TestModelViewer : public QObject {
@@ -18,6 +20,8 @@ private slots:
     void orbitPanZoomChangeCamera();
     void missingTexturesAreCounted();
     void yddListSwitchesDrawable();
+    void embeddedTexturesBelongToTheirDrawable();
+    void framingSurvivesExtremeCoordinates();
     void rendersPixels();
 };
 
@@ -119,6 +123,28 @@ void TestModelViewer::yddListSwitchesDrawable()
     QCOMPARE(status->text(), QStringLiteral("1 mesh, 3 triangles"));
     ModelViewer single(QStringLiteral("tri.ydr"), { drawable(1, "") }, {}, NameTable());
     QVERIFY(single.findChild<QListWidget *>(QStringLiteral("drawableList"))->isHidden());
+}
+
+void TestModelViewer::embeddedTexturesBelongToTheirDrawable()
+{
+    Drawable owner = drawable(1, "own", joaat("owner"));
+    owner.textures.push_back(rgbaTexture("own", 2, 2, std::vector<std::byte>(16, std::byte { 200 })));
+    ModelViewer viewer(QStringLiteral("pair.ydd"), { owner, drawable(1, "own", joaat("other")) }, {}, NameTable());
+    auto *status = viewer.findChild<QLabel *>(QStringLiteral("modelStatus"));
+    QCOMPARE(status->text(), QStringLiteral("1 mesh, 1 triangle"));
+    viewer.findChild<QListWidget *>(QStringLiteral("drawableList"))->setCurrentRow(1);
+    QCOMPARE(status->text(), QStringLiteral("1 mesh, 1 triangle, 1 texture not found"));
+}
+
+void TestModelViewer::framingSurvivesExtremeCoordinates()
+{
+    Drawable model = drawable(1, "");
+    model.meshes.front().vertices[0].position = { -3e38f, -3e38f, -3e38f };
+    model.meshes.front().vertices[1].position = { 3e38f, 3e38f, 3e38f };
+    const Camera camera = framing(model);
+    QVERIFY(std::isfinite(camera.distance));
+    QVERIFY(std::isfinite(camera.target.x()) && std::isfinite(camera.target.y()) && std::isfinite(camera.target.z()));
+    QVERIFY(std::isfinite(camera.distance * 100.0f));
 }
 
 void TestModelViewer::rendersPixels()

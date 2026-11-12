@@ -943,6 +943,8 @@ void TestMainWindow::drawableOpensModelViewer()
     const auto yftHeader = parseRsc7Header(std::span(yft).first(16)).value();
     archive.addResourceBody("car.yft", std::vector<std::byte>(yft.begin() + 16, yft.end()), yftHeader.systemFlags, yftHeader.graphicsFlags);
     archive.addResourceBody("vehshare.ytd", std::vector<std::byte>(ytd.begin() + 16, ytd.end()), ytdHeader.systemFlags, ytdHeader.graphicsFlags);
+    archive.addResourceBody("broken.ydr", std::vector<std::byte>(ydr.begin() + 16, ydr.end()), ydrHeader.systemFlags, ydrHeader.graphicsFlags);
+    archive.addResourceBody("broken.ytd", std::vector<std::byte>(32), ytdHeader.systemFlags, ytdHeader.graphicsFlags);
     writeFile(root_ / "models.rpf", archive.build());
     QVERIFY(window_->navigate(QStringLiteral("models.rpf")));
     QStringList seen;
@@ -963,7 +965,10 @@ void TestMainWindow::drawableOpensModelViewer()
     emit list_->itemActivated(row(list_, QStringLiteral("plain.ydr")), 0);
     emit list_->itemActivated(row(list_, QStringLiteral("car.yft")), 0);
     QVERIFY2(boxes.isEmpty(), qPrintable(boxes.join(QLatin1Char('\n'))));
-    QCOMPARE(seen, (QStringList { QStringLiteral("tri_hi.ydr - Model viewer|1 mesh, 1 triangle"), QStringLiteral("plain.ydr - Model viewer|1 mesh, 1 triangle, 1 texture not found"), QStringLiteral("car.yft - Model viewer|1 mesh, 1 triangle") }));
+    emit list_->itemActivated(row(list_, QStringLiteral("broken.ydr")), 0);
+    QCOMPARE(boxes.size(), 1);
+    QVERIFY2(boxes.front().startsWith(QStringLiteral("broken.ytd: ")), qPrintable(boxes.front()));
+    QCOMPARE(seen, (QStringList { QStringLiteral("tri_hi.ydr - Model viewer|1 mesh, 1 triangle"), QStringLiteral("plain.ydr - Model viewer|1 mesh, 1 triangle, 1 texture not found"), QStringLiteral("car.yft - Model viewer|1 mesh, 1 triangle"), QStringLiteral("broken.ydr - Model viewer|1 mesh, 1 triangle, 1 texture not found") }));
 }
 
 QTEST_MAIN(TestMainWindow)

@@ -30,6 +30,7 @@ constexpr float homePitch = 20.0f;
 constexpr float orbitSpeed = 0.5f;
 constexpr float panSpeed = 0.002f;
 constexpr float minimumRadius = 0.01f;
+constexpr float maximumRadius = 1.0e6f;
 
 constexpr const char *vertexShader = R"(#version 330 core
 uniform mat4 transform;
@@ -72,23 +73,23 @@ QString counted(std::size_t count, const char *one, const char *many)
 
 Camera framing(const Drawable &drawable)
 {
-    QVector3D low(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-    QVector3D high = -low;
+    std::array<double, 3> low { 0, 0, 0 };
+    std::array<double, 3> high { 0, 0, 0 };
     bool any = false;
     for (const Mesh &mesh : drawable.meshes) {
         for (const MeshVertex &vertex : mesh.vertices) {
-            const QVector3D point(vertex.position[0], vertex.position[1], vertex.position[2]);
-            if (!std::isfinite(point.x()) || !std::isfinite(point.y()) || !std::isfinite(point.z()))
+            if (!std::ranges::all_of(vertex.position, [](float value) { return std::isfinite(value); }))
                 continue;
-            low = QVector3D(std::min(low.x(), point.x()), std::min(low.y(), point.y()), std::min(low.z(), point.z()));
-            high = QVector3D(std::max(high.x(), point.x()), std::max(high.y(), point.y()), std::max(high.z(), point.z()));
+            for (std::size_t axis = 0; axis < 3; ++axis) {
+                low[axis] = any ? std::min(low[axis], double(vertex.position[axis])) : vertex.position[axis];
+                high[axis] = any ? std::max(high[axis], double(vertex.position[axis])) : vertex.position[axis];
+            }
             any = true;
         }
     }
-    if (!any)
-        low = high = QVector3D();
-    const float radius = std::max(minimumRadius, (high - low).length() / 2);
-    return Camera { (low + high) / 2, radius / std::sin(qDegreesToRadians(fieldOfView / 2)) * 1.1f, homeYaw, homePitch };
+    const double radius = std::clamp(std::hypot(high[0] - low[0], high[1] - low[1], high[2] - low[2]) / 2, double(minimumRadius), double(maximumRadius));
+    const QVector3D target(float((low[0] + high[0]) / 2), float((low[1] + high[1]) / 2), float((low[2] + high[2]) / 2));
+    return Camera { target, float(radius / std::sin(qDegreesToRadians(fieldOfView / 2)) * 1.1), homeYaw, homePitch };
 }
 
 ModelView::ModelView(std::vector<Texture> textures, QWidget *parent)
@@ -109,7 +110,6 @@ ModelView::~ModelView()
     if (available_) {
         makeCurrent();
         release();
-        uploaded_.clear();
         grey_.reset();
         program_.reset();
         doneCurrent();
@@ -163,8 +163,15 @@ QOpenGLTexture *ModelView::texture(const std::string &name)
     if (const auto found = uploaded_.find(key); found != uploaded_.end())
         return found->second ? found->second.get() : grey_.get();
     std::unique_ptr<QOpenGLTexture> made;
-    const auto source = std::ranges::find_if(textures_, [&key](const Texture &candidate) { return asciiLower(candidate.name) == key; });
-    if (source != textures_.end()) {
+    const auto named = [&key](const Texture &candidate) { return asciiLower(candidate.name) == key; };
+    const auto find = [&named](const std::vector<Texture> &list) -> const Texture * {
+        const auto found = std::ranges::find_if(list, named);
+        return found == list.end() ? nullptr : &*found;
+    };
+    const Texture *source = find(drawable_->textures);
+    if (source == nullptr)
+        source = find(textures_);
+    if (source != nullptr) {
         if (const auto rgba = decodeRgba(*source, 0)) {
             const QImage image(reinterpret_cast<const uchar *>(rgba->data()), static_cast<int>(source->width), static_cast<int>(source->height), QImage::Format_RGBA8888);
             made = std::make_unique<QOpenGLTexture>(image.copy());
@@ -183,6 +190,7 @@ QOpenGLTexture *ModelView::texture(const std::string &name)
 void ModelView::release()
 {
     meshes_.clear();
+    uploaded_.clear();
 }
 
 void ModelView::upload()
@@ -296,11 +304,6 @@ ModelViewer::ModelViewer(const QString &name, std::vector<Drawable> drawables, s
 {
     setWindowTitle(tr("%1 - Model viewer").arg(name));
     resize(1000, 700);
-    for (Drawable &drawable : drawables_) {
-        for (Texture &texture : drawable.textures)
-            textures.push_back(std::move(texture));
-        drawable.textures.clear();
-    }
     for (const Texture &texture : textures)
         available_.push_back(asciiLower(texture.name));
 
@@ -352,7 +355,8 @@ void ModelViewer::showDrawable(int index)
     for (const Mesh &mesh : drawable.meshes) {
         triangles += mesh.indices.size() / 3;
         const std::string key = asciiLower(mesh.diffuse);
-        if (!key.empty() && std::ranges::find(available_, key) == available_.end())
+        const auto named = [&key](const Texture &texture) { return asciiLower(texture.name) == key; };
+        if (!key.empty() && std::ranges::find(available_, key) == available_.end() && std::ranges::none_of(drawable.textures, named))
             missing.insert(key);
     }
     QString text = counted(drawable.meshes.size(), "mesh", "meshes") + QStringLiteral(", ") + counted(triangles, "triangle", "triangles");

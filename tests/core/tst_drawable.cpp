@@ -20,10 +20,13 @@ class TestDrawable : public QObject {
 private slots:
     void ydrReadsTriangleWithDiffuse();
     void embeddedTexturesAreRead();
+    void brokenEmbeddedDictionaryKeepsTheModel();
+    void legacyVersion164Reads();
     void yddListsEachDrawable();
     void yftUsesItsDrawable();
     void halfAndDec3nComponentsDecode();
     void hostileDrawablesAreRefused();
+    void amplifiedGeometryIsRefused();
     void enhancedDrawablesRead();
     void hostileEnhancedLayoutIsRefused();
     void otherFilesAreNotDrawables();
@@ -73,6 +76,25 @@ void TestDrawable::embeddedTexturesAreRead()
     QCOMPARE(drawables->front().textures.size(), std::size_t(1));
     QCOMPARE(drawables->front().textures.front().name, std::string("tri_d"));
     QCOMPARE(drawables->front().textures.front().width, 4u);
+}
+
+void TestDrawable::brokenEmbeddedDictionaryKeepsTheModel()
+{
+    DrawableSampleOptions options;
+    options.embeddedTexture = true;
+    DrawableSample sample = sampleDrawable(options);
+    put(sample.system, sample.embeddedList, 0, 8);
+    const auto drawables = readDrawables(drawableFile(sample, 165), "tri.ydr");
+    QVERIFY2(drawables, drawables ? "" : drawables.error().message.c_str());
+    QVERIFY(drawables->front().textures.empty());
+    QCOMPARE(drawables->front().meshes.size(), std::size_t(1));
+}
+
+void TestDrawable::legacyVersion164Reads()
+{
+    const auto drawables = readDrawables(drawableFile(sampleDrawable(), 164), "tri.ydr");
+    QVERIFY2(drawables, drawables ? "" : drawables.error().message.c_str());
+    QCOMPARE(drawables->front().meshes.front().diffuse, std::string("tri_d"));
 }
 
 void TestDrawable::yddListsEachDrawable()
@@ -140,6 +162,38 @@ void TestDrawable::hostileDrawablesAreRefused()
         QVERIFY(!drawables.error().message.empty());
     }
     QVERIFY(!readDrawables(drawableFile(sampleDrawable(), 99), "tri.ydr"));
+}
+
+void TestDrawable::amplifiedGeometryIsRefused()
+{
+    DrawableSample sample = sampleDrawable();
+    const auto value = [&sample](std::uint64_t at) {
+        std::uint64_t result = 0;
+        for (int i = 0; i < 8; ++i)
+            result |= std::to_integer<std::uint64_t>(sample.system[at + i]) << (8 * i);
+        return result;
+    };
+    const auto offset = [](std::uint64_t pointer) { return pointer - 0x50000000; };
+    const std::uint64_t list = offset(value(0x50));
+    const std::uint64_t modelPointer = value(offset(value(list)));
+    const std::uint64_t model = offset(modelPointer);
+    const std::uint64_t geometryPointer = value(offset(value(model + 0x08)));
+    const std::uint64_t models = sample.system.size();
+    for (int i = 0; i < 0xFFFF; ++i)
+        append(sample.system, modelPointer, 8);
+    const std::uint64_t geometries = sample.system.size();
+    for (int i = 0; i < 0xFFFF; ++i)
+        append(sample.system, geometryPointer, 8);
+    const std::uint64_t shaderMap = sample.system.size();
+    sample.system.resize(shaderMap + 0xFFFF * 2);
+    put(sample.system, list, 0x50000000 + models, 8);
+    put(sample.system, list + 8, 0xFFFF, 2);
+    put(sample.system, model + 0x08, 0x50000000 + geometries, 8);
+    put(sample.system, model + 0x10, 0xFFFF, 2);
+    put(sample.system, model + 0x20, 0x50000000 + shaderMap, 8);
+    const auto drawables = readDrawables(drawableFile(sample, 165), "bomb.ydr");
+    QVERIFY(!drawables);
+    QCOMPARE(drawables.error().message, std::string("the drawable holds more than a preview can show"));
 }
 
 void TestDrawable::enhancedDrawablesRead()

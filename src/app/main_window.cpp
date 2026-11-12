@@ -1020,6 +1020,7 @@ void MainWindow::openModel(const QString &name)
     if (name.endsWith(QLatin1StringView(".yft"), Qt::CaseInsensitive))
         candidates << QStringLiteral("vehshare.ytd");
     std::vector<Texture> textures;
+    QStringList problems;
     for (const QString &candidate : candidates) {
         const auto node = std::ranges::find_if(nodes_, [&candidate](const BrowserNode &entry) { return entry.kind == NodeKind::File && QString::fromStdString(entry.name).compare(candidate, Qt::CaseInsensitive) == 0; });
         if (node == nodes_.end())
@@ -1027,7 +1028,11 @@ void MainWindow::openModel(const QString &name)
         std::uint32_t version = 0;
         if (auto found = readTextures(QString::fromStdString(node->name), version))
             std::ranges::move(*found, std::back_inserter(textures));
+        else
+            problems << QStringLiteral("%1: %2").arg(QString::fromStdString(node->name), QString::fromStdString(found.error().message));
     }
+    if (!problems.isEmpty())
+        QMessageBox::warning(this, QStringLiteral("ARCHON"), problems.join(QLatin1Char('\n')));
     const auto names = drawables->size() > 1 ? metadataNames() : std::make_shared<const NameTable>();
     ModelViewer viewer(name, std::move(*drawables), std::move(textures), *names, this);
     viewer.exec();

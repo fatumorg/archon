@@ -24,6 +24,8 @@ constexpr int positionComponent = 0;
 constexpr int normalComponent = 3;
 constexpr int uvComponent = 6;
 constexpr std::array<std::uint64_t, 4> lodLists { 0x50, 0x58, 0x60, 0x68 };
+constexpr std::uint64_t previewBudget = 256ull << 20;
+constexpr std::uint64_t entryCost = 256;
 
 enum ComponentType : std::uint32_t {
     Half2 = 1,
@@ -57,7 +59,7 @@ std::optional<Layout> layoutOf(Kind kind, std::uint32_t version)
 {
     if (kind == Kind::Yft)
         return version == 162 || version == 160 ? std::optional(Layout::Legacy) : version == 171 ? std::optional(Layout::Enhanced) : std::nullopt;
-    return version == 165 ? std::optional(Layout::Legacy) : version == 159 || version == 154 ? std::optional(Layout::Enhanced) : std::nullopt;
+    return version == 165 || version == 164 ? std::optional(Layout::Legacy) : version == 159 || version == 154 ? std::optional(Layout::Enhanced) : std::nullopt;
 }
 
 std::uint32_t nameHash(std::string_view name)
@@ -111,6 +113,14 @@ private:
         return *offset;
     }
 
+    Result<void> charge(std::uint64_t bytes)
+    {
+        if (bytes > previewBudget - spent_)
+            return failure("the drawable holds more than a preview can show");
+        spent_ += bytes;
+        return {};
+    }
+
     Result<std::vector<Drawable>> dictionary()
     {
         const auto root = at(resourceSystemBase, 0x40, "the drawable dictionary");
@@ -141,6 +151,8 @@ private:
         const auto root = at(pointer, 0x70, "a drawable");
         if (!root)
             return std::unexpected(root.error());
+        if (const auto charged = charge(entryCost); !charged)
+            return std::unexpected(charged.error());
         Drawable drawable;
         std::vector<std::string> diffuse;
         if (const std::uint64_t group = pages_.value(*root + 0x10, 8); group != 0) {
@@ -180,10 +192,13 @@ private:
             const auto root = pages_.system(dictionary, 0x40);
             if (!root)
                 return failure("the embedded texture dictionary lies outside the resource");
-            auto textures = readTextureDictionary(bytes_, pages_.systemSize(), enhanced_ ? enhancedDictionaryVersion : legacyDictionaryVersion, *root);
-            if (!textures)
-                return std::unexpected(textures.error());
-            drawable.textures = std::move(*textures);
+            if (auto textures = readTextureDictionary(bytes_, pages_.systemSize(), enhanced_ ? enhancedDictionaryVersion : legacyDictionaryVersion, *root)) {
+                for (const Texture &texture : *textures) {
+                    if (const auto charged = charge(entryCost + texture.data.size()); !charged)
+                        return std::unexpected(charged.error());
+                }
+                drawable.textures = std::move(*textures);
+            }
         }
         const std::uint64_t count = pages_.value(*group + 0x18, 2);
         const auto list = at(pages_.value(*group + 0x10, 8), count * 8, "the shader list");
@@ -191,6 +206,8 @@ private:
             return std::unexpected(list.error());
         std::vector<std::string> diffuse;
         for (std::uint64_t index = 0; index < count; ++index) {
+            if (const auto charged = charge(entryCost); !charged)
+                return std::unexpected(charged.error());
             const auto name = enhanced_ ? enhancedShaderDiffuse(pages_.value(*list + index * 8, 8)) : shaderDiffuse(pages_.value(*list + index * 8, 8));
             if (!name)
                 return std::unexpected(name.error());
@@ -262,6 +279,8 @@ private:
         const auto header = at(pointer, 0x30, "a model");
         if (!header)
             return std::unexpected(header.error());
+        if (const auto charged = charge(entryCost); !charged)
+            return std::unexpected(charged.error());
         const std::uint64_t count = pages_.value(*header + 0x10, 2);
         if (count == 0)
             return {};
@@ -432,7 +451,8 @@ private:
         const auto indices = at(indexLayout.data, indexCount * 2, "index data");
         if (!indices)
             return std::unexpected(indices.error());
-
+        if (const auto charged = charge(entryCost + count * sizeof(MeshVertex) + indexCount * sizeof(std::uint32_t)); !charged)
+            return std::unexpected(charged.error());
         Mesh mesh;
         mesh.indices.reserve(static_cast<std::size_t>(indexCount));
         for (std::uint64_t index = 0; index < indexCount; ++index) {
@@ -456,6 +476,7 @@ private:
     std::span<const std::byte> bytes_;
     ResourcePages pages_;
     bool enhanced_;
+    std::uint64_t spent_ = 0;
 };
 
 }

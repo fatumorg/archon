@@ -76,6 +76,7 @@ public:
             const std::size_t dictionary = alloc(0x40);
             const std::size_t list = alloc(8);
             pointer(list, texture("tri_d", true));
+            sample_.embeddedList = list;
             pointer(dictionary + 0x30, list);
             put(dictionary + 0x38, 1, 2);
             put(dictionary + 0x3A, 1, 2);
