@@ -3,10 +3,11 @@ add_library(archon-test-support STATIC
     core/support/real_keys.cpp
     core/support/rpf_builder.cpp
     core/support/test_bytes.cpp
+    core/support/zip_builder.cpp
 )
 target_compile_definitions(archon-test-support PRIVATE ARCHON_TEST_CACHE_DIR="${CMAKE_BINARY_DIR}")
 target_include_directories(archon-test-support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core)
-target_link_libraries(archon-test-support PUBLIC archon-core Qt6::Test PRIVATE ZLIB::ZLIB OpenSSL::Crypto)
+target_link_libraries(archon-test-support PUBLIC archon-core Qt6::Test PRIVATE ZLIB::ZLIB OpenSSL::Crypto PkgConfig::LIBZIP)
 
 function(archon_add_test name)
     add_executable(${name} ${ARGN})
@@ -43,7 +44,7 @@ archon_add_test(tst_game_edit core/tst_game_edit.cpp)
 archon_add_test(tst_zip_archive core/tst_zip_archive.cpp)
 archon_add_test(tst_asi_manager core/tst_asi_manager.cpp)
 archon_add_test(tst_prefix core/tst_prefix.cpp)
-target_link_libraries(tst_zip_archive PRIVATE PkgConfig::LIBZIP)
+archon_add_test(tst_oiv_package core/tst_oiv_package.cpp)
 archon_add_test(tst_real_sweep core/tst_real_sweep.cpp)
 
 set_tests_properties(tst_game_setup tst_keys tst_ng tst_rpf_archive tst_rpf_reader tst_game_install tst_rpf_extract tst_rpf_writer PROPERTIES LABELS real)

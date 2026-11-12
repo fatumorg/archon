@@ -26,6 +26,7 @@
           pkgs.zlib
           pkgs.openssl
           pkgs.libzip
+          pkgs.pugixml
         ];
         qtWrapperArgs = [
           "--suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.protontricks ]}"

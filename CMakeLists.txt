@@ -21,6 +21,7 @@ find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+pkg_check_modules(PUGIXML REQUIRED IMPORTED_TARGET pugixml)
 
 enable_testing()
 
