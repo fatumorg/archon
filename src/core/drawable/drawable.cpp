@@ -51,22 +51,30 @@ std::optional<Kind> kindOf(std::string_view name)
     return std::nullopt;
 }
 
-bool supported(Kind kind, std::uint32_t version)
+enum class Layout { Legacy, Enhanced };
+
+std::optional<Layout> layoutOf(Kind kind, std::uint32_t version)
 {
-    return kind == Kind::Yft ? version == 162 || version == 160 : version == 165;
+    if (kind == Kind::Yft)
+        return version == 162 || version == 160 ? std::optional(Layout::Legacy) : version == 171 ? std::optional(Layout::Enhanced) : std::nullopt;
+    return version == 165 ? std::optional(Layout::Legacy) : version == 159 || version == 154 ? std::optional(Layout::Enhanced) : std::nullopt;
 }
 
-std::uint32_t diffuseHash()
+std::uint32_t nameHash(std::string_view name)
 {
-    constexpr std::string_view name = "diffusesampler";
     return jenkinsHash(std::as_bytes(std::span(name.data(), name.size())));
 }
 
+constexpr std::size_t enhancedSlots = 52;
+constexpr std::size_t enhancedNormalSlot = 4;
+constexpr std::size_t enhancedUvSlot = 28;
+
 class Reader {
 public:
-    Reader(std::span<const std::byte> pages, std::uint64_t systemSize)
+    Reader(std::span<const std::byte> pages, std::uint64_t systemSize, Layout layout)
         : bytes_(pages)
         , pages_(pages, systemSize)
+        , enhanced_(layout == Layout::Enhanced)
     {
     }
 
@@ -172,7 +180,7 @@ private:
             const auto root = pages_.system(dictionary, 0x40);
             if (!root)
                 return failure("the embedded texture dictionary lies outside the resource");
-            auto textures = readTextureDictionary(bytes_, pages_.systemSize(), legacyDictionaryVersion, *root);
+            auto textures = readTextureDictionary(bytes_, pages_.systemSize(), enhanced_ ? enhancedDictionaryVersion : legacyDictionaryVersion, *root);
             if (!textures)
                 return std::unexpected(textures.error());
             drawable.textures = std::move(*textures);
@@ -183,7 +191,7 @@ private:
             return std::unexpected(list.error());
         std::vector<std::string> diffuse;
         for (std::uint64_t index = 0; index < count; ++index) {
-            const auto name = shaderDiffuse(pages_.value(*list + index * 8, 8));
+            const auto name = enhanced_ ? enhancedShaderDiffuse(pages_.value(*list + index * 8, 8)) : shaderDiffuse(pages_.value(*list + index * 8, 8));
             if (!name)
                 return std::unexpected(name.error());
             diffuse.push_back(*name);
@@ -205,20 +213,48 @@ private:
             return std::unexpected(parameters.error());
         for (std::uint64_t index = 0; index < count; ++index) {
             const std::uint64_t parameter = *parameters + index * 16;
-            if (pages_.value(parameter, 1) != textureParameter || pages_.value(*parameters + hashesAt + index * 4, 4) != diffuseHash())
+            if (pages_.value(parameter, 1) != textureParameter || pages_.value(*parameters + hashesAt + index * 4, 4) != nameHash("diffusesampler"))
                 continue;
-            const std::uint64_t texture = pages_.value(parameter + 8, 8);
-            if (texture == 0)
-                return std::string();
-            const auto header = at(texture, 0x30, "a shader texture");
-            if (!header)
-                return std::unexpected(header.error());
-            const auto name = pages_.string(pages_.value(*header + 0x28, 8), maxNameLength);
-            if (!name)
-                return failure("a shader texture name lies outside the resource");
-            return *name;
+            return textureName(pages_.value(parameter + 8, 8));
         }
         return std::string();
+    }
+
+    Result<std::string> enhancedShaderDiffuse(std::uint64_t pointer)
+    {
+        const auto shader = at(pointer, 0x28, "a shader");
+        if (!shader)
+            return std::unexpected(shader.error());
+        const auto descriptor = at(pages_.value(*shader + 0x20, 8), 8, "the shader descriptor");
+        if (!descriptor)
+            return std::unexpected(descriptor.error());
+        const std::uint64_t count = pages_.value(*descriptor + 1, 1);
+        const auto entries = at(pages_.value(*shader + 0x20, 8), 8 + count * 8, "the shader descriptor");
+        if (!entries)
+            return std::unexpected(entries.error());
+        for (std::uint64_t index = 0; index < count; ++index) {
+            if (pages_.value(*entries + 8 + index * 8, 4) != nameHash("diffusetex"))
+                continue;
+            const std::uint64_t slot = pages_.value(*entries + 12 + index * 8, 4) >> 2;
+            const auto slots = at(pages_.value(*shader + 0x10, 8), (slot + 1) * 8, "the shader textures");
+            if (!slots)
+                return std::unexpected(slots.error());
+            return textureName(pages_.value(*slots + slot * 8, 8));
+        }
+        return std::string();
+    }
+
+    Result<std::string> textureName(std::uint64_t texture) const
+    {
+        if (texture == 0)
+            return std::string();
+        const auto header = at(texture, 0x30, "a shader texture");
+        if (!header)
+            return std::unexpected(header.error());
+        const auto name = pages_.string(pages_.value(*header + 0x28, 8), maxNameLength);
+        if (!name)
+            return failure("a shader texture name lies outside the resource");
+        return *name;
     }
 
     Result<void> model(std::uint64_t pointer, const std::vector<std::string> &diffuse, Drawable &drawable)
@@ -290,14 +326,55 @@ private:
         }
     }
 
-    Result<Mesh> geometry(std::uint64_t pointer)
+    struct VertexLayout {
+        std::uint64_t data = 0;
+        std::uint64_t count = 0;
+        std::uint64_t stride = 0;
+        std::uint64_t position = 0;
+        std::optional<std::pair<std::uint64_t, std::uint32_t>> normal;
+        std::optional<std::pair<std::uint64_t, std::uint32_t>> uv;
+    };
+
+    struct IndexLayout {
+        std::uint64_t data = 0;
+        std::uint64_t count = 0;
+    };
+
+    Result<std::pair<VertexLayout, IndexLayout>> enhancedBuffers(std::uint64_t header)
     {
-        const auto header = at(pointer, 0x98, "a geometry");
-        if (!header)
-            return std::unexpected(header.error());
-        if (pages_.value(*header + 0x62, 2) != triangleList)
-            return failure("a geometry is not a triangle list");
-        const auto buffer = at(pages_.value(*header + 0x18, 8), 0x38, "a vertex buffer");
+        const auto buffer = at(pages_.value(header + 0x18, 8), 0x40, "a vertex buffer");
+        if (!buffer)
+            return std::unexpected(buffer.error());
+        VertexLayout vertices;
+        vertices.count = pages_.value(*buffer + 0x08, 4);
+        vertices.stride = pages_.value(*buffer + 0x0C, 4);
+        vertices.data = pages_.value(*buffer + 0x18, 8);
+        const auto table = at(pages_.value(*buffer + 0x38, 8), enhancedSlots * 4, "a vertex layout");
+        if (!table)
+            return std::unexpected(table.error());
+        const auto offset = [&](std::size_t slot) { return slot == enhancedSlots ? vertices.stride : pages_.value(*table + slot * 4, 4); };
+        for (std::size_t slot = 0; slot < enhancedSlots; ++slot) {
+            if (offset(slot) > offset(slot + 1))
+                return failure("a vertex layout is out of order or larger than its stride");
+        }
+        const auto size = [&](std::size_t slot) { return offset(slot + 1) - offset(slot); };
+        if (offset(0) != 0 || size(0) != 12)
+            return failure("a vertex declaration has no position");
+        if (size(enhancedNormalSlot) == 12)
+            vertices.normal = std::pair(offset(enhancedNormalSlot), static_cast<std::uint32_t>(Float3));
+        if (size(enhancedUvSlot) == 8 || size(enhancedUvSlot) == 4)
+            vertices.uv = std::pair(offset(enhancedUvSlot), static_cast<std::uint32_t>(size(enhancedUvSlot) == 8 ? Float2 : Half2));
+        const auto indexBuffer = at(pages_.value(header + 0x38, 8), 0x20, "an index buffer");
+        if (!indexBuffer)
+            return std::unexpected(indexBuffer.error());
+        if (pages_.value(*indexBuffer + 0x0C, 4) != 2)
+            return failure("an index buffer does not hold 16-bit indices");
+        return std::pair(vertices, IndexLayout { pages_.value(*indexBuffer + 0x18, 8), pages_.value(*indexBuffer + 0x08, 4) });
+    }
+
+    Result<std::pair<VertexLayout, IndexLayout>> legacyBuffers(std::uint64_t header)
+    {
+        const auto buffer = at(pages_.value(header + 0x18, 8), 0x38, "a vertex buffer");
         if (!buffer)
             return std::unexpected(buffer.error());
         const auto declaration = at(pages_.value(*buffer + 0x30, 8), 0x10, "a vertex declaration");
@@ -322,17 +399,37 @@ private:
             return failure("a vertex declaration has no position");
         if (stride == 0 || packed > stride)
             return failure("a vertex stride is smaller than its components");
-        const std::uint64_t count = pages_.value(*buffer + 0x18, 4);
-        const auto vertices = at(pages_.value(*buffer + 0x10, 8), count * stride, "vertex data");
-        if (!vertices)
-            return std::unexpected(vertices.error());
-        const auto indexBuffer = at(pages_.value(*header + 0x38, 8), 0x18, "an index buffer");
+        VertexLayout vertices { pages_.value(*buffer + 0x10, 8), pages_.value(*buffer + 0x18, 4), stride, offsets[positionComponent], std::nullopt, std::nullopt };
+        if ((mask >> normalComponent & 1) != 0)
+            vertices.normal = std::pair(offsets[normalComponent], static_cast<std::uint32_t>((types >> (4 * normalComponent)) & 0xF));
+        if ((mask >> uvComponent & 1) != 0)
+            vertices.uv = std::pair(offsets[uvComponent], static_cast<std::uint32_t>((types >> (4 * uvComponent)) & 0xF));
+        const auto indexBuffer = at(pages_.value(header + 0x38, 8), 0x18, "an index buffer");
         if (!indexBuffer)
             return std::unexpected(indexBuffer.error());
-        const std::uint64_t indexCount = pages_.value(*indexBuffer + 0x08, 4);
+        return std::pair(vertices, IndexLayout { pages_.value(*indexBuffer + 0x10, 8), pages_.value(*indexBuffer + 0x08, 4) });
+    }
+
+    Result<Mesh> geometry(std::uint64_t pointer)
+    {
+        const auto header = at(pointer, 0x98, "a geometry");
+        if (!header)
+            return std::unexpected(header.error());
+        if (pages_.value(*header + 0x62, 2) != triangleList)
+            return failure("a geometry is not a triangle list");
+        const auto buffers = enhanced_ ? enhancedBuffers(*header) : legacyBuffers(*header);
+        if (!buffers)
+            return std::unexpected(buffers.error());
+        const auto &[layout, indexLayout] = *buffers;
+        const std::uint64_t count = layout.count;
+        const std::uint64_t stride = layout.stride;
+        const auto vertices = at(layout.data, count * stride, "vertex data");
+        if (!vertices)
+            return std::unexpected(vertices.error());
+        const std::uint64_t indexCount = indexLayout.count;
         if (indexCount % 3 != 0)
             return failure("an index buffer does not hold whole triangles");
-        const auto indices = at(pages_.value(*indexBuffer + 0x10, 8), indexCount * 2, "index data");
+        const auto indices = at(indexLayout.data, indexCount * 2, "index data");
         if (!indices)
             return std::unexpected(indices.error());
 
@@ -344,17 +441,13 @@ private:
                 return failure("a triangle uses a vertex that does not exist");
             mesh.indices.push_back(static_cast<std::uint32_t>(value));
         }
-        const bool hasNormal = (mask >> normalComponent & 1) != 0;
-        const bool hasUv = (mask >> uvComponent & 1) != 0;
-        const std::uint32_t normalType = (types >> (4 * normalComponent)) & 0xF;
-        const std::uint32_t uvType = (types >> (4 * uvComponent)) & 0xF;
         mesh.vertices.reserve(static_cast<std::size_t>(count));
         for (std::uint64_t index = 0; index < count; ++index) {
             const std::uint64_t vertex = *vertices + index * stride;
             mesh.vertices.push_back(MeshVertex {
-                vectorAt(vertex + offsets[positionComponent], Float3),
-                hasNormal ? vectorAt(vertex + offsets[normalComponent], normalType) : std::array<float, 3> { 0, 0, 0 },
-                hasUv ? uvAt(vertex + offsets[uvComponent], uvType) : std::array<float, 2> { 0, 0 },
+                vectorAt(vertex + layout.position, Float3),
+                layout.normal ? vectorAt(vertex + layout.normal->first, layout.normal->second) : std::array<float, 3> { 0, 0, 0 },
+                layout.uv ? uvAt(vertex + layout.uv->first, layout.uv->second) : std::array<float, 2> { 0, 0 },
             });
         }
         return mesh;
@@ -362,6 +455,7 @@ private:
 
     std::span<const std::byte> bytes_;
     ResourcePages pages_;
+    bool enhanced_;
 };
 
 }
@@ -381,12 +475,13 @@ Result<std::vector<Drawable>> readDrawables(std::span<const std::byte> file, std
     const auto header = parseRsc7Header(file.first(16));
     if (!header)
         return std::unexpected(header.error());
-    if (!supported(*kind, header->version))
+    const auto layout = layoutOf(*kind, header->version);
+    if (!layout)
         return failure("drawable version " + std::to_string(header->version) + " is not supported");
     const auto pages = inflateResource(file);
     if (!pages)
         return std::unexpected(pages.error());
-    Reader reader(*pages, rsc7SizeFromFlags(header->systemFlags));
+    Reader reader(*pages, rsc7SizeFromFlags(header->systemFlags), *layout);
     return reader.run(*kind);
 }
 

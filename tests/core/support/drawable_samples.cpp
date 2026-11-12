@@ -86,13 +86,27 @@ public:
         pointer(shaders, shader);
         pointer(group + 0x10, shaders);
         put(group + 0x18, 1, 2);
-        const std::size_t parameters = alloc(0x20);
-        pointer(shader, parameters);
-        put(shader + 0x10, 1, 1);
-        put(shader + 0x14, 0x10, 2);
-        put(parameters, 0, 1);
-        pointer(parameters + 0x08, texture("tri_d", false));
-        put(parameters + 0x10, hashOf("diffusesampler"), 4);
+        if (options.enhanced) {
+            const std::size_t slots = alloc(16);
+            const std::size_t descriptor = alloc(24);
+            pointer(slots + 8, texture("tri_d", false));
+            put(descriptor + 1, 2, 1);
+            put(descriptor + 8, hashOf("bumptex"), 4);
+            put(descriptor + 12, 0, 4);
+            put(descriptor + 16, hashOf("diffusetex"), 4);
+            put(descriptor + 20, 4, 4);
+            pointer(shader + 0x10, slots);
+            pointer(shader + 0x20, descriptor);
+        }
+        const std::size_t parameters = options.enhanced ? 0 : alloc(0x20);
+        if (!options.enhanced) {
+            pointer(shader, parameters);
+            put(shader + 0x10, 1, 1);
+            put(shader + 0x14, 0x10, 2);
+            put(parameters, 0, 1);
+            pointer(parameters + 0x08, texture("tri_d", false));
+            put(parameters + 0x10, hashOf("diffusesampler"), 4);
+        }
 
         const std::size_t list = alloc(0x10);
         const std::size_t models = alloc(8);
@@ -127,7 +141,7 @@ public:
         }
         const std::size_t count = vertices.size() / options.stride;
         const std::size_t vertexBuffer = alloc(0x80);
-        const std::size_t declaration = alloc(0x10);
+        const std::size_t declaration = alloc(options.enhanced ? 52 * 4 : 0x10);
         const std::size_t indexBuffer = alloc(0x60);
         const std::size_t vertexData = alloc(vertices.size());
         std::ranges::copy(vertices, sample_.system.begin() + static_cast<std::ptrdiff_t>(vertexData));
@@ -142,16 +156,28 @@ public:
         put(geometry + 0x60, count, 2);
         put(geometry + 0x62, 3, 2);
         put(geometry + 0x70, options.stride, 2);
-        put(vertexBuffer + 0x08, options.stride, 2);
-        pointer(vertexBuffer + 0x10, vertexData);
-        put(vertexBuffer + 0x18, count, 4);
-        pointer(vertexBuffer + 0x20, vertexData);
-        pointer(vertexBuffer + 0x30, declaration);
-        put(declaration, options.mask, 4);
-        put(declaration + 4, options.stride, 2);
-        put(declaration + 8, options.types, 8);
-        put(indexBuffer + 0x08, 3, 4);
-        pointer(indexBuffer + 0x10, indexData);
+        if (options.enhanced) {
+            put(vertexBuffer + 0x08, count, 4);
+            put(vertexBuffer + 0x0C, options.stride, 4);
+            pointer(vertexBuffer + 0x18, vertexData);
+            pointer(vertexBuffer + 0x38, declaration);
+            for (std::size_t slot = 0; slot < 52; ++slot)
+                put(declaration + slot * 4, slot == 0 ? 0 : slot <= 4 ? 12 : slot <= 24 ? 24 : slot <= 28 ? 28 : 36, 4);
+            put(indexBuffer + 0x08, 3, 4);
+            put(indexBuffer + 0x0C, 2, 4);
+            pointer(indexBuffer + 0x18, indexData);
+        } else {
+            put(vertexBuffer + 0x08, options.stride, 2);
+            pointer(vertexBuffer + 0x10, vertexData);
+            put(vertexBuffer + 0x18, count, 4);
+            pointer(vertexBuffer + 0x20, vertexData);
+            pointer(vertexBuffer + 0x30, declaration);
+            put(declaration, options.mask, 4);
+            put(declaration + 4, options.stride, 2);
+            put(declaration + 8, options.types, 8);
+            put(indexBuffer + 0x08, 3, 4);
+            pointer(indexBuffer + 0x10, indexData);
+        }
         sample_.geometry = geometry;
         sample_.vertexBuffer = vertexBuffer;
         sample_.declaration = declaration;

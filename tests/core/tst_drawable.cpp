@@ -10,6 +10,7 @@
 
 #include <bit>
 #include <functional>
+#include <tuple>
 
 using namespace archon;
 using namespace archon::test;
@@ -23,6 +24,8 @@ private slots:
     void yftUsesItsDrawable();
     void halfAndDec3nComponentsDecode();
     void hostileDrawablesAreRefused();
+    void enhancedDrawablesRead();
+    void hostileEnhancedLayoutIsRefused();
     void otherFilesAreNotDrawables();
     void realDrawablesRead();
 };
@@ -137,6 +140,38 @@ void TestDrawable::hostileDrawablesAreRefused()
         QVERIFY(!drawables.error().message.empty());
     }
     QVERIFY(!readDrawables(drawableFile(sampleDrawable(), 99), "tri.ydr"));
+}
+
+void TestDrawable::enhancedDrawablesRead()
+{
+    DrawableSampleOptions options;
+    options.enhanced = true;
+    for (const auto &[kind, version, name] : { std::tuple { SampleKind::Ydr, 159u, "tri.ydr" }, std::tuple { SampleKind::Ydr, 154u, "tri.ydr" }, std::tuple { SampleKind::Yft, 171u, "car.yft" } }) {
+        options.kind = kind;
+        const auto drawables = readDrawables(drawableFile(sampleDrawable(options), version), name);
+        QVERIFY2(drawables, drawables ? "" : drawables.error().message.c_str());
+        const Mesh &mesh = drawables->front().meshes.front();
+        QCOMPARE(mesh.diffuse, std::string("tri_d"));
+        QCOMPARE(mesh.indices, (std::vector<std::uint32_t> { 0, 1, 2 }));
+        QCOMPARE(mesh.vertices[1].position, (std::array<float, 3> { 1, 0, 0 }));
+        QCOMPARE(mesh.vertices[2].normal, (std::array<float, 3> { 0, 0, 1 }));
+        QCOMPARE(mesh.vertices[2].uv, (std::array<float, 2> { 0, 1 }));
+    }
+}
+
+void TestDrawable::hostileEnhancedLayoutIsRefused()
+{
+    DrawableSampleOptions options;
+    options.enhanced = true;
+    DrawableSample sample = sampleDrawable(options);
+    put(sample.system, sample.declaration + 28 * 4, 40, 4);
+    QVERIFY(!readDrawables(drawableFile(sample, 159), "tri.ydr"));
+    sample = sampleDrawable(options);
+    put(sample.system, sample.indexBuffer + 0x0C, 4, 4);
+    QVERIFY(!readDrawables(drawableFile(sample, 159), "tri.ydr"));
+    sample = sampleDrawable(options);
+    put(sample.system, sample.declaration + 4, 0, 4);
+    QVERIFY(!readDrawables(drawableFile(sample, 159), "tri.ydr"));
 }
 
 void TestDrawable::otherFilesAreNotDrawables()

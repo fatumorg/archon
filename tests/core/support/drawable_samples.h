@@ -15,6 +15,7 @@ struct DrawableSampleOptions {
     std::uint16_t stride = 36;
     std::vector<std::byte> vertices;
     bool embeddedTexture = false;
+    bool enhanced = false;
 };
 
 struct DrawableSample {
