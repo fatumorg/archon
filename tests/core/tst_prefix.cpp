@@ -37,6 +37,7 @@ private slots:
     void overrideReadFromUserReg();
     void windowsVersionFromUserRegOrSystemReg();
     void commandsCoverOnlyMissing();
+    void dotNetIsFollowedByWindows10();
     void findPrefixFromLibraryLayout();
     void runningGameFoundInProc();
     void realPrefixReadsAsVerified();
@@ -110,7 +111,7 @@ void TestPrefix::windowsVersionFromUserRegOrSystemReg()
 void TestPrefix::commandsCoverOnlyMissing()
 {
     std::map<PrefixComponent, bool> status {
-        { PrefixComponent::DotNet48, false },
+        { PrefixComponent::DotNet48, true },
         { PrefixComponent::VcRun2022, true },
         { PrefixComponent::D3dCompiler47, false },
         { PrefixComponent::Windows10, true },
@@ -118,17 +119,34 @@ void TestPrefix::commandsCoverOnlyMissing()
     };
     const auto commands = setupCommands(GameEdition::Legacy, status);
     QCOMPARE(commands.size(), std::size_t(2));
-    QCOMPARE(commands[0], QStringList({ "271590", "-q", "dotnet48", "d3dcompiler_47" }));
-    QCOMPARE(commands[1], QStringList({ "-c", "wine reg add HKCU\\\\Software\\\\Wine\\\\DllOverrides /v dinput8 /d native,builtin /f", "271590" }));
+    QCOMPARE(commands[0], QStringList({ "271590", "-q", "d3dcompiler_47" }));
+    QCOMPARE(commands[1], QStringList({ "-c", "wine reg add HKCU\\\\Software\\\\Wine\\\\DllOverrides /v dinput8 /d native,builtin /f && \"$WINESERVER\" -w", "271590" }));
     for (auto &[component, present] : status)
         present = true;
     QVERIFY(setupCommands(GameEdition::Enhanced, status).empty());
     status[PrefixComponent::LoaderOverride] = false;
     const auto enhanced = setupCommands(GameEdition::Enhanced, status);
     QCOMPARE(enhanced.size(), std::size_t(1));
-    QCOMPARE(enhanced[0], QStringList({ "-c", "wine reg add HKCU\\\\Software\\\\Wine\\\\DllOverrides /v xinput1_4 /d native,builtin /f", "3240220" }));
+    QCOMPARE(enhanced[0], QStringList({ "-c", "wine reg add HKCU\\\\Software\\\\Wine\\\\DllOverrides /v xinput1_4 /d native,builtin /f && \"$WINESERVER\" -w", "3240220" }));
     QCOMPARE(steamAppId(GameEdition::Legacy), std::uint32_t(271590));
     QCOMPARE(steamAppId(GameEdition::Enhanced), std::uint32_t(3240220));
+}
+
+void TestPrefix::dotNetIsFollowedByWindows10()
+{
+    std::map<PrefixComponent, bool> status {
+        { PrefixComponent::DotNet48, false },
+        { PrefixComponent::VcRun2022, false },
+        { PrefixComponent::D3dCompiler47, false },
+        { PrefixComponent::Windows10, true },
+        { PrefixComponent::LoaderOverride, true },
+    };
+    const auto commands = setupCommands(GameEdition::Legacy, status);
+    QCOMPARE(commands.size(), std::size_t(4));
+    QCOMPARE(commands[0], QStringList({ "271590", "-q", "vcrun2022" }));
+    QCOMPARE(commands[1], QStringList({ "271590", "-q", "d3dcompiler_47" }));
+    QCOMPARE(commands[2], QStringList({ "271590", "-q", "dotnet48" }));
+    QCOMPARE(commands[3], QStringList({ "271590", "-q", "win10" }));
 }
 
 void TestPrefix::findPrefixFromLibraryLayout()

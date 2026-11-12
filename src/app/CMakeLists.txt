@@ -1,10 +1,13 @@
 add_library(archon-app STATIC
     address_bar.cpp
+    asi_manager_dialog.cpp
     busy.cpp
     display_format.cpp
+    download.cpp
     game_setup.cpp
     history_dialog.cpp
     main_window.cpp
+    prefix_setup_dialog.cpp
     search_dialog.cpp
     style.cpp
 )

@@ -8,6 +8,7 @@
 #include "core/rpf/rpf_reader.h"
 #include "core/safety/transaction.h"
 #include "support/browse_fixture.h"
+#include "support/modal_driver.h"
 #include "support/temp_files.h"
 
 #include <QAction>
@@ -59,59 +60,6 @@ QStringList statusTexts(const MainWindow &window)
         texts.append(label->text());
     return texts;
 }
-
-QString plain(QString text)
-{
-    return text.remove(QLatin1Char('&'));
-}
-
-class ModalDriver : public QObject {
-public:
-    explicit ModalDriver(QStringList buttons)
-        : buttons_(buttons.begin(), buttons.end())
-    {
-        timer_.setInterval(20);
-        connect(&timer_, &QTimer::timeout, this, &ModalDriver::poll);
-        timer_.start();
-    }
-
-    bool done() const
-    {
-        return buttons_.empty();
-    }
-
-    QStringList unexpected;
-    QStringList seen;
-
-private:
-    void poll()
-    {
-        QWidget *modal = QApplication::activeModalWidget();
-        if (modal == nullptr || qobject_cast<QProgressDialog *>(modal) != nullptr || modal == last_)
-            return;
-        if (buttons_.empty()) {
-            auto *box = qobject_cast<QMessageBox *>(modal);
-            unexpected.append(box != nullptr ? box->text() : modal->windowTitle());
-            last_ = modal;
-            QTimer::singleShot(0, modal, &QWidget::close);
-            return;
-        }
-        for (QAbstractButton *button : modal->findChildren<QAbstractButton *>()) {
-            if (button->isVisible() && button->isEnabled() && plain(button->text()) == buttons_.front()) {
-                if (auto *box = qobject_cast<QMessageBox *>(modal))
-                    seen.append(box->text());
-                buttons_.pop_front();
-                last_ = button->text() == QStringLiteral("Close") ? modal : nullptr;
-                QTimer::singleShot(0, button, &QAbstractButton::click);
-                return;
-            }
-        }
-    }
-
-    std::deque<QString> buttons_;
-    QTimer timer_;
-    QWidget *last_ = nullptr;
-};
 
 QAction *actionNamed(QWidget *window, const QString &text)
 {
@@ -166,6 +114,7 @@ private slots:
     void recoverUnfinishedRollsBack();
     void styledMessageBoxButtonsFitTheirText();
     void uncancellableWorkShowsNoCancelButton();
+    void asiManagerOpensFromTools();
 
 private:
     void turnOnEditMode()
@@ -200,7 +149,7 @@ void TestMainWindow::init()
     root_ = pathOf(*directory_) / "game";
     store_ = pathOf(*directory_) / "store";
     writeBrowseFixture(root_);
-    window_ = std::make_unique<MainWindow>(root_, nullptr, store_);
+    window_ = std::make_unique<MainWindow>(root_, nullptr, store_, GameEdition::Legacy);
     window_->show();
     QVERIFY(QTest::qWaitForWindowExposed(window_.get()));
     list_ = window_->findChild<QTreeWidget *>(QStringLiteral("fileList"));
@@ -441,7 +390,7 @@ void TestMainWindow::actionsAreExactlyTheWorkingSet()
     texts.removeDuplicates();
     texts.sort();
     QStringList expected { "E&xit", "Extract…", "Open", "Select &all", "&Refresh", "&Up one level", "&Back", "&Forward", "&Search…", "&About ARCHON",
-        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…" };
+        "Edit mode", "&Add…", "&New folder…", "&Replace…", "Re&name…", "&Delete", "Copy to \"mods\" folder", "Re&build", "Change &history…", "&ASI Manager…" };
     expected.sort();
     QCOMPARE(texts, expected);
 }
@@ -742,6 +691,23 @@ void TestMainWindow::uncancellableWorkShowsNoCancelButton()
     QVERIFY(dialogs > 0);
     QCOMPARE(cancelButtons, 0);
     QVERIFY(!dismissedEarly);
+}
+
+void TestMainWindow::asiManagerOpensFromTools()
+{
+    QStringList titles;
+    QTimer probe;
+    probe.setInterval(20);
+    connect(&probe, &QTimer::timeout, this, [&titles] {
+        if (QWidget *modal = QApplication::activeModalWidget(); modal != nullptr && !titles.contains(modal->windowTitle()))
+            titles.append(modal->windowTitle());
+    });
+    probe.start();
+    ModalDriver driver({ QStringLiteral("Close") });
+    actionNamed(window_.get(), QStringLiteral("&ASI Manager…"))->trigger();
+    QVERIFY(driver.done());
+    QCOMPARE(titles, QStringList { QStringLiteral("ASI Manager") });
+    QVERIFY(window_->findChild<QToolBar *>()->actions().contains(actionNamed(window_.get(), QStringLiteral("&ASI Manager…"))));
 }
 
 QTEST_MAIN(TestMainWindow)

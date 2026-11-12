@@ -1,6 +1,7 @@
 #include "app/main_window.h"
 
 #include "app/address_bar.h"
+#include "app/asi_manager_dialog.h"
 #include "app/busy.h"
 #include "app/display_format.h"
 #include "app/history_dialog.h"
@@ -112,11 +113,12 @@ bool isInsideArchive(const QString &path)
 
 }
 
-MainWindow::MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, std::filesystem::path store, QWidget *parent)
+MainWindow::MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, std::filesystem::path store, GameEdition edition, QWidget *parent)
     : QMainWindow(parent)
     , root_(std::move(root))
     , keys_(std::move(keys))
     , store_(std::move(store))
+    , edition_(edition)
     , browser_(root_, keys_)
 {
     setWindowTitle(QStringLiteral("ARCHON"));
@@ -301,6 +303,13 @@ void MainWindow::buildActions()
 
     historyAction_ = new QAction(tr("Change &history…"), this);
     connect(historyAction_, &QAction::triggered, this, &MainWindow::openHistory);
+
+    asiManagerAction_ = new QAction(loadIcon(QStringLiteral("asi")), tr("&ASI Manager…"), this);
+    connect(asiManagerAction_, &QAction::triggered, this, [this] {
+        AsiManagerDialog dialog(root_, edition_, store_, this);
+        dialog.exec();
+        reload();
+    });
 }
 
 void MainWindow::buildNavigationRow()
@@ -377,6 +386,7 @@ void MainWindow::buildNavigationRow()
     view->addAction(refreshAction_);
     QMenu *tools = menus->addMenu(tr("&Tools"));
     tools->addAction(searchAction_);
+    tools->addAction(asiManagerAction_);
     tools->addAction(historyAction_);
     QMenu *help = menus->addMenu(tr("&Help"));
     help->addAction(aboutAction_);
@@ -399,6 +409,8 @@ void MainWindow::buildNavigationRow()
     bar->addAction(addAction_);
     bar->addAction(deleteAction_);
     bar->addAction(rebuildAction_);
+    bar->addSeparator();
+    bar->addAction(asiManagerAction_);
     setContextMenuPolicy(Qt::NoContextMenu);
 }
 

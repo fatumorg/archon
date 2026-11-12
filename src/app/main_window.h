@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/game/game_edit.h"
+#include "core/game/game_install.h"
 
 #include <QMainWindow>
 
@@ -17,7 +18,7 @@ class AddressBar;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, std::filesystem::path store, QWidget *parent = nullptr);
+    MainWindow(std::filesystem::path root, std::shared_ptr<const Keys> keys, std::filesystem::path store, GameEdition edition, QWidget *parent = nullptr);
 
     QString currentPath() const;
     bool navigate(const QString &path);
@@ -61,6 +62,7 @@ private:
     std::filesystem::path root_;
     std::shared_ptr<const Keys> keys_;
     std::filesystem::path store_;
+    GameEdition edition_;
     GameBrowser browser_;
     bool editMode_ = false;
     bool inArchive_ = false;
@@ -95,6 +97,7 @@ private:
     QAction *copyToModsAction_ = nullptr;
     QAction *rebuildAction_ = nullptr;
     QAction *historyAction_ = nullptr;
+    QAction *asiManagerAction_ = nullptr;
 };
 
 }

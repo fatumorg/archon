@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
     }
     if (!archon::recoverUnfinished(session->store, nullptr))
         return 0;
-    archon::MainWindow window(session->install.root, session->keys, session->store);
+    archon::MainWindow window(session->install.root, session->keys, session->store, session->install.edition);
     window.show();
     return QApplication::exec();
 }

@@ -141,24 +141,24 @@ std::map<PrefixComponent, bool> prefixStatus(const std::filesystem::path &prefix
 std::vector<QStringList> setupCommands(GameEdition edition, const std::map<PrefixComponent, bool> &status)
 {
     const QString appId = QString::number(steamAppId(edition));
-    const std::array<std::pair<PrefixComponent, const char *>, 4> verbs { {
-        { PrefixComponent::DotNet48, "dotnet48" },
+    const auto missing = [&status](PrefixComponent component) {
+        const auto found = status.find(component);
+        return found == status.end() || !found->second;
+    };
+    const std::array<std::pair<PrefixComponent, const char *>, 3> verbs { {
         { PrefixComponent::VcRun2022, "vcrun2022" },
         { PrefixComponent::D3dCompiler47, "d3dcompiler_47" },
-        { PrefixComponent::Windows10, "win10" },
+        { PrefixComponent::DotNet48, "dotnet48" },
     } };
     std::vector<QStringList> commands;
-    QStringList install { appId, QStringLiteral("-q") };
     for (const auto &[component, verb] : verbs) {
-        const auto found = status.find(component);
-        if (found == status.end() || !found->second)
-            install.append(QString::fromLatin1(verb));
+        if (missing(component))
+            commands.push_back({ appId, QStringLiteral("-q"), QString::fromLatin1(verb) });
     }
-    if (install.size() > 2)
-        commands.push_back(install);
-    const auto override = status.find(PrefixComponent::LoaderOverride);
-    if (override == status.end() || !override->second) {
-        const QString command = QStringLiteral("wine reg add HKCU\\\\Software\\\\Wine\\\\DllOverrides /v %1 /d native,builtin /f").arg(QString::fromStdString(loaderDll(edition)));
+    if (missing(PrefixComponent::Windows10) || missing(PrefixComponent::DotNet48))
+        commands.push_back({ appId, QStringLiteral("-q"), QStringLiteral("win10") });
+    if (missing(PrefixComponent::LoaderOverride)) {
+        const QString command = QStringLiteral("wine reg add HKCU\\\\Software\\\\Wine\\\\DllOverrides /v %1 /d native,builtin /f && \"$WINESERVER\" -w").arg(QString::fromStdString(loaderDll(edition)));
         commands.push_back({ QStringLiteral("-c"), command, appId });
     }
     return commands;

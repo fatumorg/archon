@@ -1,5 +1,7 @@
 #include "app/game_setup.h"
 
+#include "app/download.h"
+
 #include "core/crypto/hash.h"
 #include "core/safety/transaction.h"
 
@@ -13,8 +15,6 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QSaveFile>
@@ -30,7 +30,6 @@ const QLatin1StringView magicUrl("https://raw.githubusercontent.com/dexyfex/Code
 const QLatin1StringView magicDigest("dc35981f822e892ced3aa81d31e7a96927d573ee28f67417592b5afeaf330832");
 const QLatin1StringView pathSetting("game/path");
 constexpr qint64 magicSizeLimit = 16 << 20;
-constexpr int downloadTimeoutMs = 30000;
 constexpr int rootRole = Qt::UserRole;
 
 std::span<const std::byte> bytesOf(const QByteArray &content)
@@ -95,30 +94,10 @@ std::optional<GameInstall> askForInstall(QWidget *parent, const std::vector<Game
 
 Result<QByteArray> downloadMagic(QWidget *parent)
 {
-    QNetworkAccessManager network;
-    QNetworkRequest request { QUrl(magicUrl) };
-    request.setTransferTimeout(downloadTimeoutMs);
-    QNetworkReply *reply = network.get(request);
-    QProgressDialog progress(QObject::tr("Downloading the key tables (magic.dat) from the CodeWalker repository…"), QObject::tr("Cancel"), 0, 0, parent);
-    progress.setWindowTitle(QStringLiteral("ARCHON"));
-    progress.setWindowModality(Qt::ApplicationModal);
-    progress.setMinimumDuration(0);
-    progress.setAutoClose(false);
-    progress.setAutoReset(false);
-    QEventLoop loop;
-    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    QObject::connect(&progress, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
-    QObject::connect(reply, &QNetworkReply::downloadProgress, reply, [reply](qint64 received) {
-        if (received > magicSizeLimit)
-            reply->abort();
-    });
-    progress.show();
-    loop.exec();
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError)
-        return std::unexpected(Error { "download", 0, reply->errorString().toStdString() });
-    QByteArray content = reply->readAll();
-    if (const auto checked = checkMagic(bytesOf(content)); !checked)
+    auto content = download(parent, QObject::tr("Downloading the key tables (magic.dat) from the CodeWalker repository…"), QUrl(magicUrl), magicSizeLimit);
+    if (!content)
+        return content;
+    if (const auto checked = checkMagic(bytesOf(*content)); !checked)
         return std::unexpected(checked.error());
     return content;
 }
