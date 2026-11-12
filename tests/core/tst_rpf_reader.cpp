@@ -1,5 +1,6 @@
 #include "core/rpf/rpf_reader.h"
 #include "core/io/ascii.h"
+#include "core/rsc/resource_file.h"
 #include "core/rsc/rsc7.h"
 #include "support/memory_source.h"
 #include "support/real_install.h"
@@ -246,6 +247,9 @@ void TestRpfReader::readsResourceStoredWithLineEndingDamage()
     const auto stored = reader->storedFile(*reader->archive().find("damaged.ytd"));
     QVERIFY(stored);
     QCOMPARE(std::vector<std::byte>(stored->begin() + 16, stored->end()), damaged);
+    const auto inflated = inflateResource(*stored);
+    QVERIFY2(inflated, inflated ? "" : inflated.error().message.c_str());
+    QCOMPARE(*inflated, noisy);
     QVERIFY(!dataAt(*reader, "truncated.ytd"));
 }
 
@@ -265,6 +269,9 @@ void TestRpfReader::readsResourceWithEightBytesBeforeTheStream()
     const auto stored = reader->storedFile(*reader->archive().find("old.ytd"));
     QVERIFY(stored);
     QCOMPARE(std::vector<std::byte>(stored->begin() + 16, stored->end()), prefixed);
+    const auto inflated = inflateResource(*stored);
+    QVERIFY2(inflated, inflated ? "" : inflated.error().message.c_str());
+    QCOMPARE(*inflated, pages);
     QVERIFY(!dataAt(*reader, "short.ytd"));
 }
 

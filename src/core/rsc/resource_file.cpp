@@ -9,6 +9,20 @@ namespace archon {
 
 namespace {
 
+constexpr std::size_t oldStreamPrefixSize = 8;
+
+std::vector<std::byte> withoutInsertedCarriageReturns(std::span<const std::byte> data)
+{
+    std::vector<std::byte> result;
+    result.reserve(data.size());
+    for (std::size_t i = 0; i < data.size(); ++i) {
+        if (data[i] == std::byte { 0x0d } && i + 1 < data.size() && data[i + 1] == std::byte { 0x0a })
+            continue;
+        result.push_back(data[i]);
+    }
+    return result;
+}
+
 constexpr std::uint64_t pageUnit = 0x200;
 constexpr std::uint64_t minimumPage = 0x2000;
 constexpr std::uint32_t maxShift = 15;
@@ -52,6 +66,23 @@ Result<std::vector<std::byte>> buildResourceFile(std::uint32_t version, std::spa
     return file;
 }
 
+Result<std::vector<std::byte>> inflateResourceBody(std::span<const std::byte> body, std::size_t pages)
+{
+    auto data = inflateRaw(body, pages);
+    if (data)
+        return data;
+    const auto repaired = withoutInsertedCarriageReturns(body);
+    if (repaired.size() != body.size()) {
+        if (auto recovered = inflateRaw(repaired, pages))
+            return recovered;
+    }
+    if (body.size() > oldStreamPrefixSize) {
+        if (auto recovered = inflateRaw(body.subspan(oldStreamPrefixSize), pages))
+            return recovered;
+    }
+    return data;
+}
+
 Result<std::vector<std::byte>> inflateResource(std::span<const std::byte> file)
 {
     if (file.size() < headerSize)
@@ -62,7 +93,7 @@ Result<std::vector<std::byte>> inflateResource(std::span<const std::byte> file)
     const std::uint64_t size = rsc7SizeFromFlags(header->systemFlags) + rsc7SizeFromFlags(header->graphicsFlags);
     if (size > resourceLimit)
         return std::unexpected(Error { "rsc7", 0, "declared size exceeds the allocation limit" });
-    return inflateRaw(file.subspan(headerSize), static_cast<std::size_t>(size));
+    return inflateResourceBody(file.subspan(headerSize), static_cast<std::size_t>(size));
 }
 
 }
