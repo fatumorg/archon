@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-beta3
+## 0.1.0
 
 - GTA V Enhanced: File > Choose game switches between Legacy and Enhanced; Enhanced texture dictionaries, including their sRGB and R16 formats, are read and written.
 - Text editor for `.meta`, `.xml`, `.dat` and other text files, with line numbers; keeps encoding, byte-order mark and line endings when saving.
@@ -20,6 +20,7 @@
 - ASI Manager: install the ASI Loader (Ultimate ASI Loader) and the mods folder loader (RageOpenV) from pinned downloads; add, remove, enable and disable ASI plugins.
 - Package Installer: installs OIV packages (2.0, 2.1, 2.2 and 1.x packages made for GTA V) into the "mods" folder or the game folder as one change, with file, archive, text and XML commands; uninstall from Change history. Package files are copied straight from the package to disk, so files of several gigabytes (NaturalVision Evolved) install.
 - Proton prefix setup: installs .NET Framework 4.8, the Visual C++ runtime and d3dcompiler_47, sets Windows 10 and the loader override through protontricks, and verifies each component. protontricks runs with fsync off, so its many short Wine calls no longer fail at random, and the record keeps the output of a failed step.
+- Builds with Qt 6.8 or newer and GCC 13 or newer; packages for Arch, Debian, Ubuntu, Fedora, Void and Nix in Frepo.
 
 ## 0.1.0-beta2
 
