@@ -1,6 +1,7 @@
 #include "core/rpf/rpf_extract.h"
 
 #include <QByteArrayView>
+#include <QFile>
 #include <QSaveFile>
 
 namespace archon {
@@ -21,7 +22,7 @@ Result<std::uint64_t> writeEntry(const RpfReader &reader, std::uint32_t entryInd
     if (!content)
         return std::unexpected(content.error());
     std::filesystem::create_directories(target.parent_path(), error);
-    QSaveFile file(target);
+    QSaveFile file(QFile::decodeName(target.c_str()));
     if (!file.open(QIODevice::WriteOnly)
         || file.write(reinterpret_cast<const char *>(content->data()), static_cast<qint64>(content->size())) != static_cast<qint64>(content->size())
         || !file.commit())

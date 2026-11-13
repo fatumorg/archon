@@ -16,7 +16,7 @@ if(ARCHON_FUZZ)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets Svg Network Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets Svg Network Test)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)

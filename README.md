@@ -55,7 +55,7 @@ Tools > ASI Manager installs what the game needs to load mods:
 
 Both are downloaded from their GitHub releases and checked against a pinned SHA-256; a local copy is accepted when it matches the same digest. The plugin list shows `.asi` files in the game folder, `scripts` and `plugins`. Disabling a plugin renames it to `.asi.disabled`. Every action is a change in Tools > Change history.
 
-On Linux, Prefix setup in the ASI Manager prepares the game's Proton prefix for script mods with `protontricks`: .NET Framework 4.8, the Visual C++ 2015-2022 runtime, d3dcompiler_47, Windows 10 and the ASI Loader DLL override. Each component is checked after the run and the result is written to a log. Prefix changes cannot be rolled back. Under Proton GE 11.12 the .NET Framework 4.8 installer fails inside Wine (MSI error 1603); ARCHON reports it as not installed.
+On Linux, Prefix setup in the ASI Manager prepares the game's Proton prefix for script mods with `protontricks`: .NET Framework 4.8, the Visual C++ 2015-2022 runtime, d3dcompiler_47, Windows 10 and the ASI Loader DLL override. Each component is checked after the run and the result is written to a log. Prefix changes cannot be rolled back. Under Proton 11 (Proton Experimental and GE-Proton 11) Wine cannot unpack the .NET Framework 4.8 installer (MSI error 1603); ARCHON reports it as not installed and the log keeps the installer's output.
 
 Known limits:
 
@@ -65,12 +65,18 @@ Known limits:
 
 On first start ARCHON downloads the public key table file `magic.dat` from the CodeWalker repository, checks it against a pinned SHA-256, and uses it with the key found in your own game executable.
 
+## Install
+
+Packages for Arch, Debian, Ubuntu, Fedora, Void and Nix are in [Frepo](https://fatumorg.github.io/Frepo).
+
 ## Build
 
 ```
 nix build
 ./result/bin/archon
 ```
+
+Without Nix: CMake 3.28 or newer, a C++23 compiler (GCC 13 or newer), Qt 6.8 or newer (Widgets, OpenGL, Svg, Network), zlib, OpenSSL, libzip and pugixml.
 
 ## Develop
 

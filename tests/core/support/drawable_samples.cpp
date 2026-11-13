@@ -3,6 +3,7 @@
 #include "core/crypto/hash.h"
 #include "core/rsc/resource_file.h"
 
+#include <algorithm>
 #include <bit>
 #include <string_view>
 

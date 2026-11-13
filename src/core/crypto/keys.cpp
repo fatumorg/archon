@@ -102,7 +102,7 @@ Result<void> writeCache(const std::filesystem::path &cacheFile, std::span<const 
 {
     std::error_code ignored;
     std::filesystem::create_directories(cacheFile.parent_path(), ignored);
-    QSaveFile file(cacheFile);
+    QSaveFile file(QFile::decodeName(cacheFile.c_str()));
     if (!file.open(QIODevice::WriteOnly))
         return keyError("cannot write key cache " + cacheFile.string());
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);

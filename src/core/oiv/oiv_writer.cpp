@@ -8,6 +8,7 @@
 #include <pugixml.hpp>
 
 #include <cstdio>
+#include <span>
 #include <sstream>
 
 namespace archon {

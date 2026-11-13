@@ -3,6 +3,7 @@
 #include "core/crypto/inflate.h"
 #include "core/rsc/rsc7.h"
 
+#include <algorithm>
 #include <bit>
 
 namespace archon {
