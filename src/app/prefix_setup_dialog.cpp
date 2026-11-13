@@ -2,6 +2,7 @@
 
 #include <QCloseEvent>
 #include <QDateTime>
+#include <QDir>
 #include <QDialogButtonBox>
 #include <QFile>
 #include <QFontDatabase>
@@ -20,6 +21,9 @@
 namespace archon {
 
 namespace {
+
+constexpr qsizetype recordedOutputLength = 8192;
+constexpr qsizetype recordedOutputLines = 30;
 
 constexpr std::array<PrefixComponent, 5> components {
     PrefixComponent::DotNet48,
@@ -147,9 +151,15 @@ void PrefixSetupDialog::runNext()
     output_->appendPlainText(QString());
     process_ = new QProcess(this);
     process_->setProcessChannelMode(QProcess::MergedChannels);
+    process_->setWorkingDirectory(QDir::homePath());
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("PROTON_NO_FSYNC"), QStringLiteral("1"));
+    process_->setProcessEnvironment(environment);
+    processOutput_.clear();
     QProcess *process = process_;
     connect(process, &QProcess::readyRead, this, [this, process] {
         const QString text = QString::fromLocal8Bit(process->readAll());
+        processOutput_ = (processOutput_ + text).right(recordedOutputLength);
         output_->moveCursor(QTextCursor::End);
         output_->insertPlainText(text);
         output_->moveCursor(QTextCursor::End);
@@ -159,8 +169,14 @@ void PrefixSetupDialog::runNext()
         process_ = nullptr;
         const int result = exitStatus == QProcess::NormalExit ? code : -1;
         recordLines_.append(shown + QStringLiteral(" -> exit code %1").arg(result));
-        if (result != 0)
+        if (result != 0) {
             log(tr("protontricks exited with code %1").arg(result));
+            QStringList lines = processOutput_.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            if (lines.size() > recordedOutputLines)
+                lines = lines.mid(lines.size() - recordedOutputLines);
+            for (const QString &line : lines)
+                recordLines_.append(QStringLiteral("  ") + line.trimmed());
+        }
         showStatus();
         runNext();
     });

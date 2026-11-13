@@ -7,6 +7,7 @@
 #include "support/temp_files.h"
 #include "support/test_bytes.h"
 
+#include <QDir>
 #include <QFile>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -38,6 +39,7 @@ echo "fake protontricks $*"
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 if [ -n "$FAKE_START_GAME" ]; then mkdir -p "$FAKE_START_GAME/555"; printf 'Z:\\GTA5.exe\0' > "$FAKE_START_GAME/555/cmdline"; fi
 echo "$*" >> "$FAKE_LOG"
+echo "PROTON_NO_FSYNC=$PROTON_NO_FSYNC $PWD" >> "$FAKE_LOG.env"
 p="$FAKE_PREFIX"
 if [ "$1" = "-c" ]; then
   printf '[Software\\\\Wine\\\\DllOverrides] 1\n"dinput8"="native,builtin"\n\n' >> "$p/user.reg"
@@ -245,6 +247,8 @@ void TestAsiDialogs::prefixSetupRunsMissingVerbsAndVerifies()
     QVERIFY(record.contains("protontricks 271590 -q win10 -> exit code 0"));
     QVERIFY(record.contains("exit code 0"));
     QVERIFY(record.contains(".NET Framework 4.8 (ScriptHookVDotNet, RAGE Plugin Hook, LSPDFR): present"));
+    const QByteArray environment = fileBytes(pathOf(*directory_) / "calls.log.env");
+    QCOMPARE(environment, QByteArray("PROTON_NO_FSYNC=1 " + QDir::homePath().toUtf8() + '\n').repeated(5));
 
     QVERIFY(runSetup(*shown));
     QCOMPARE(fileBytes(pathOf(*directory_) / "calls.log").count('\n'), 5);
@@ -258,7 +262,7 @@ void TestAsiDialogs::prefixSetupReportsFailure()
     QVERIFY(!runSetup(*shown));
     QVERIFY(output(*shown).contains(QStringLiteral("protontricks exited with code 3")));
     QVERIFY(output(*shown).contains(QStringLiteral("Not installed: .NET Framework 4.8 (ScriptHookVDotNet, RAGE Plugin Hook, LSPDFR)")));
-    QVERIFY(fileBytes(store_ / "prefix-271590.log").contains("protontricks 271590 -q dotnet48 -> exit code 3"));
+    QVERIFY(fileBytes(store_ / "prefix-271590.log").contains("protontricks 271590 -q dotnet48 -> exit code 3\n  fake protontricks 271590 -q dotnet48\n"));
     QCOMPARE(fileBytes(pathOf(*directory_) / "calls.log").count('\n'), 5);
     QCOMPARE(componentState(*shown, 0), QStringLiteral("Missing"));
     for (int index = 1; index < 5; ++index)

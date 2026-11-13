@@ -19,7 +19,7 @@
 - Texture dictionaries (.ytd): preview every texture, export as DDS or PNG, and in edit mode replace, add (DDS keeps its format; PNG, JPEG, BMP and TGA become A8R8G8B8 with generated mipmaps), rename and remove textures.
 - ASI Manager: install the ASI Loader (Ultimate ASI Loader) and the mods folder loader (RageOpenV) from pinned downloads; add, remove, enable and disable ASI plugins.
 - Package Installer: installs OIV packages (2.0, 2.1, 2.2 and 1.x packages made for GTA V) into the "mods" folder or the game folder as one change, with file, archive, text and XML commands; uninstall from Change history. Package files are copied straight from the package to disk, so files of several gigabytes (NaturalVision Evolved) install.
-- Proton prefix setup: installs .NET Framework 4.8, the Visual C++ runtime and d3dcompiler_47, sets Windows 10 and the loader override through protontricks, and verifies each component.
+- Proton prefix setup: installs .NET Framework 4.8, the Visual C++ runtime and d3dcompiler_47, sets Windows 10 and the loader override through protontricks, and verifies each component. protontricks runs with fsync off, so its many short Wine calls no longer fail at random, and the record keeps the output of a failed step.
 
 ## 0.1.0-beta2
 

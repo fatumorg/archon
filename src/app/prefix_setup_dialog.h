@@ -47,6 +47,7 @@ private:
     QPushButton *close_ = nullptr;
     QProcess *process_ = nullptr;
     QStringList recordLines_;
+    QString processOutput_;
 };
 
 }
