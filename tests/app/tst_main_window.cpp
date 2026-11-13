@@ -52,13 +52,19 @@ namespace {
 
 void closeNextMessageBox(int *closed = nullptr)
 {
-    QTimer::singleShot(50, qApp, [closed] {
-        if (QWidget *box = QApplication::activeModalWidget()) {
-            if (closed != nullptr)
-                ++*closed;
-            box->close();
-        }
+    auto *timer = new QTimer(qApp);
+    timer->setInterval(20);
+    QObject::connect(timer, &QTimer::timeout, timer, [timer, closed] {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (box == nullptr)
+            return;
+        if (closed != nullptr)
+            ++*closed;
+        timer->stop();
+        timer->deleteLater();
+        box->close();
     });
+    timer->start();
 }
 
 QTreeWidgetItem *row(QTreeWidget *list, const QString &name)
