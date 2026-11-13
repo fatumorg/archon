@@ -151,7 +151,7 @@ void PrefixSetupDialog::runNext()
     output_->appendPlainText(QString());
     process_ = new QProcess(this);
     process_->setProcessChannelMode(QProcess::MergedChannels);
-    process_->setWorkingDirectory(QDir::homePath());
+    process_->setWorkingDirectory(QDir::rootPath());
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("PROTON_NO_FSYNC"), QStringLiteral("1"));
     process_->setProcessEnvironment(environment);

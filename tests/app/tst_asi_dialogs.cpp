@@ -7,7 +7,6 @@
 #include "support/temp_files.h"
 #include "support/test_bytes.h"
 
-#include <QDir>
 #include <QFile>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -248,7 +247,7 @@ void TestAsiDialogs::prefixSetupRunsMissingVerbsAndVerifies()
     QVERIFY(record.contains("exit code 0"));
     QVERIFY(record.contains(".NET Framework 4.8 (ScriptHookVDotNet, RAGE Plugin Hook, LSPDFR): present"));
     const QByteArray environment = fileBytes(pathOf(*directory_) / "calls.log.env");
-    QCOMPARE(environment, QByteArray("PROTON_NO_FSYNC=1 " + QDir::homePath().toUtf8() + '\n').repeated(5));
+    QCOMPARE(environment, QByteArray("PROTON_NO_FSYNC=1 /\n").repeated(5));
 
     QVERIFY(runSetup(*shown));
     QCOMPARE(fileBytes(pathOf(*directory_) / "calls.log").count('\n'), 5);
