@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(archon VERSION 0.1.0 LANGUAGES CXX)
+project(archon VERSION 0.1.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,7 +8,12 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-add_compile_options(-Wall -Wextra -Wpedantic -Werror)
+add_compile_options(-Wall -Wextra -Wpedantic)
+
+option(ARCHON_WERROR "Treat compiler warnings as errors" OFF)
+if(ARCHON_WERROR)
+    add_compile_options(-Werror)
+endif()
 
 option(ARCHON_FUZZ "Build the libFuzzer targets with sanitizers" OFF)
 if(ARCHON_FUZZ)

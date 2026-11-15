@@ -12,7 +12,7 @@
     {
       packages.${system}.default = pkgs.stdenv.mkDerivation {
         pname = "archon";
-        version = "0.1.0";
+        version = "0.1.1";
         src = ./.;
         nativeBuildInputs = [
           pkgs.cmake
@@ -28,6 +28,7 @@
           pkgs.libzip
           pkgs.pugixml
         ];
+        cmakeFlags = [ "-DARCHON_WERROR=ON" ];
         qtWrapperArgs = [
           "--suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.protontricks ]}"
         ];

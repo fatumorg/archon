@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Distribution builds no longer stop on compiler warnings: GCC 14 and 15 report a false warning inside the C++ standard library on Debian, Ubuntu and Void. `-DARCHON_WERROR=ON` (set by the `dev` preset and the Nix flake) still turns warnings into errors.
+
 ## 0.1.0
 
 - GTA V Enhanced: File > Choose game switches between Legacy and Enhanced; Enhanced texture dictionaries, including their sRGB and R16 formats, are read and written.
